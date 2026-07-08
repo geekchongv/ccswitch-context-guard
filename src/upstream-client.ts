@@ -33,10 +33,11 @@ export class UpstreamClient {
     }
   }
 
-  public async postJson(routePath: string, payload: unknown): Promise<Response> {
+  public async postJson(routePath: string, payload: unknown, headers: Record<string, string> = {}): Promise<Response> {
     return this.forward(routePath, {
       method: "POST",
       headers: {
+        ...headers,
         "content-type": "application/json",
       },
       body: JSON.stringify(payload),

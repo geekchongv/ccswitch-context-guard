@@ -37,6 +37,20 @@ function copyResponseHeaders(upstreamResponse: Response, response: http.ServerRe
   response.writeHead(upstreamResponse.status, headers);
 }
 
+function getForwardedHeaders(request: http.IncomingMessage): Record<string, string> {
+  const forwardedHeaders: Record<string, string> = {};
+  const blockedHeaders = new Set(["host", "content-length"]);
+
+  for (const [key, value] of Object.entries(request.headers)) {
+    const normalizedKey = key.toLowerCase();
+    if (typeof value === "string" && !blockedHeaders.has(normalizedKey)) {
+      forwardedHeaders[key] = value;
+    }
+  }
+
+  return forwardedHeaders;
+}
+
 async function pipeUpstreamResponse(upstreamResponse: Response, response: http.ServerResponse): Promise<void> {
   copyResponseHeaders(upstreamResponse, response);
   const contentType = upstreamResponse.headers.get("content-type") ?? "";
@@ -86,17 +100,12 @@ export function createServer(config: AppConfig, logger: Logger, orchestrator: Or
           method: request.method,
         });
         const parsed = JSON.parse(rawBody.toString("utf8")) as ChatCompletionRequest;
-        const upstreamResponse = await orchestrator.handle(routePath, parsed);
+        const upstreamResponse = await orchestrator.handle(routePath, parsed, getForwardedHeaders(request));
         await pipeUpstreamResponse(upstreamResponse, response);
         return;
       }
 
-      const forwardedHeaders: Record<string, string> = {};
-      for (const [key, value] of Object.entries(request.headers)) {
-        if (typeof value === "string" && key.toLowerCase() !== "host") {
-          forwardedHeaders[key] = value;
-        }
-      }
+      const forwardedHeaders = getForwardedHeaders(request);
 
       const upstreamResponse = await upstreamClient.forward(routeWithQuery, {
         method: request.method ?? "GET",

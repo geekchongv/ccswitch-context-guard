@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.3.1
+
+- Fixed Claude Desktop gateway authentication failures by preserving upstream request headers in the AI orchestration path.
+- Preserves `Authorization`, `x-api-key`, `anthropic-version`, and other non-hop request headers when forwarding `/v1/messages` and `/v1/chat/completions`.
+- Added a regression test that verifies Desktop gateway authorization headers survive orchestration.
+
 ## v0.3.0
 
 - Added Claude Desktop 3P config patching through `%LOCALAPPDATA%/Claude-3p/configLibrary`.

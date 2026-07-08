@@ -137,7 +137,11 @@ export class Orchestrator {
     this.upstreamClient = new UpstreamClient(config.upstream);
   }
 
-  public async handle(routePath: string, request: ChatCompletionRequest): Promise<Response> {
+  public async handle(
+    routePath: string,
+    request: ChatCompletionRequest,
+    upstreamHeaders: Record<string, string> = {},
+  ): Promise<Response> {
     const requestId = randomUUID();
     const timestamp = new Date().toISOString();
 
@@ -264,7 +268,7 @@ export class Orchestrator {
       });
 
       for (const [index, chunkRequest] of chunkPlan.entries()) {
-        const chunkResponse = await this.upstreamClient.postJson(routePath, chunkRequest);
+        const chunkResponse = await this.upstreamClient.postJson(routePath, chunkRequest, upstreamHeaders);
         if (!chunkResponse.ok) {
           this.logger.error("分块执行失败", {
             requestId,
@@ -286,7 +290,7 @@ export class Orchestrator {
       }
 
       const synthesisRequest = buildSynthesisRequest(workingRequest, chunkOutputs);
-      const synthesisResponse = await this.upstreamClient.postJson(routePath, synthesisRequest);
+      const synthesisResponse = await this.upstreamClient.postJson(routePath, synthesisRequest, upstreamHeaders);
 
       this.logger.info("分块结果汇总完成", {
         requestId,
@@ -310,7 +314,7 @@ export class Orchestrator {
       return synthesisResponse;
     }
 
-    let response = await this.upstreamClient.postJson(routePath, workingRequest);
+    let response = await this.upstreamClient.postJson(routePath, workingRequest, upstreamHeaders);
 
     if (this.config.tokenPolicy.retryOnContextError && !response.ok) {
       const inspected = await inspectContextLimitResponse(response);
@@ -345,7 +349,7 @@ export class Orchestrator {
             inputTokens: inspected.contextError.inputTokens,
             safetyMargin: this.config.tokenPolicy.safetyMargin,
           });
-          response = await this.upstreamClient.postJson(routePath, workingRequest);
+          response = await this.upstreamClient.postJson(routePath, workingRequest, upstreamHeaders);
         }
       }
     }

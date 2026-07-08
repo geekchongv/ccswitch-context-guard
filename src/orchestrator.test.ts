@@ -120,3 +120,62 @@ test("orchestrator lowers max_tokens and retries once after upstream context lim
     await once(upstream, "close");
   }
 });
+
+test("orchestrator preserves authorization headers for Claude Desktop gateway requests", async () => {
+  mkdirSync("test-output/logs", { recursive: true });
+  mkdirSync("test-output/runtime/sessions", { recursive: true });
+
+  const receivedAuthorizationHeaders: Array<string | undefined> = [];
+  const upstream = http.createServer(async (request, response) => {
+    await readJson(request);
+    receivedAuthorizationHeaders.push(request.headers.authorization);
+
+    if (request.headers.authorization !== "Bearer desktop-token") {
+      response.writeHead(401, { "content-type": "application/json; charset=utf-8" });
+      response.end(JSON.stringify({ error: "missing authorization" }));
+      return;
+    }
+
+    response.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+    response.end(
+      JSON.stringify({
+        content: [{ type: "text", text: "auth ok" }],
+      }),
+    );
+  });
+
+  upstream.listen(0, "127.0.0.1");
+  await once(upstream, "listening");
+  const address = upstream.address();
+  assert.ok(address && typeof address === "object");
+
+  try {
+    const config = buildTestConfig(address.port);
+    const orchestrator = new Orchestrator(
+      config,
+      new Logger(config.logging),
+      new SessionStore(config.runtime.directory),
+    );
+    const request: ChatCompletionRequest = {
+      messages: [{ role: "user", content: "hello desktop gateway" }],
+      max_tokens: 1024,
+    };
+
+    const response = await orchestrator.handle(
+      "/claude-desktop/v1/messages",
+      request,
+      {
+        authorization: "Bearer desktop-token",
+        "anthropic-version": "2023-06-01",
+      },
+    );
+    const payload = (await response.json()) as { content: { text: string }[] };
+
+    assert.equal(response.status, 200);
+    assert.equal(payload.content[0]?.text, "auth ok");
+    assert.deepEqual(receivedAuthorizationHeaders, ["Bearer desktop-token"]);
+  } finally {
+    upstream.close();
+    await once(upstream, "close");
+  }
+});
