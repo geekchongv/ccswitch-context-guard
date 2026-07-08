@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CCProxy Agent</title>
+  <style>
+    :root {
+      font-family: Inter, "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+      background: #f4f6f8;
+      color: #17202f;
+      line-height: 1.45;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; overflow: hidden; }
+    button, input, textarea, select { font: inherit; }
+    .app { display: grid; grid-template-columns: 248px 1fr; min-height: 100vh; }
+    aside { background: #111827; color: #e5edf7; padding: 20px 16px; display: flex; flex-direction: column; gap: 18px; }
+    .brand h1 { margin: 0; font-size: 20px; letter-spacing: 0; }
+    .brand p { margin: 6px 0 0; color: #9fb0c6; font-size: 13px; }
+    .nav { display: grid; gap: 8px; }
+    .nav button { width: 100%; min-height: 38px; border: 0; border-radius: 6px; padding: 0 12px; text-align: left; color: #c8d5e7; background: transparent; cursor: pointer; }
+    .nav button.active, .nav button:hover { background: #263449; color: #ffffff; }
+    .side-actions { margin-top: auto; display: grid; gap: 8px; }
+    .side-actions button { min-height: 36px; border: 1px solid #3b4b63; border-radius: 6px; background: #172235; color: #eef4fb; cursor: pointer; }
+    .side-actions button:hover { background: #22324a; }
+    main { height: 100vh; overflow: auto; padding: 22px 26px; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+    h2 { margin: 0; font-size: 22px; letter-spacing: 0; }
+    .pill { display: inline-flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 12px; border: 1px solid #d3dbe6; border-radius: 6px; background: #ffffff; color: #293445; font-weight: 600; }
+    .dot { width: 9px; height: 9px; border-radius: 50%; background: #9aa5b1; }
+    .dot.ok { background: #13825f; }
+    .dot.off { background: #c0392b; }
+    .grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
+    .panel { background: #ffffff; border: 1px solid #dbe2eb; border-radius: 8px; box-shadow: 0 1px 2px rgba(16, 24, 40, .04); }
+    .metric { padding: 14px; min-height: 84px; }
+    .metric label { display: block; color: #66758a; font-size: 12px; margin-bottom: 8px; }
+    .metric strong { display: block; font-size: 14px; overflow-wrap: anywhere; }
+    .section { display: none; }
+    .section.active { display: block; }
+    .form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+    .field { display: grid; gap: 6px; padding: 14px; }
+    .field label { font-size: 12px; color: #5f6d7f; }
+    input, textarea, select { width: 100%; border: 1px solid #cfd8e3; border-radius: 6px; background: #ffffff; color: #162133; padding: 8px 10px; }
+    textarea { min-height: 92px; resize: vertical; }
+    input[type="checkbox"] { width: 18px; height: 18px; }
+    .check { display: flex; align-items: center; gap: 10px; min-height: 37px; }
+    .full { grid-column: 1 / -1; }
+    .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border-bottom: 1px solid #e4eaf1; }
+    .toolbar h3 { margin: 0; font-size: 16px; letter-spacing: 0; }
+    .buttons { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .primary, .secondary, .danger { min-height: 34px; padding: 0 12px; border-radius: 6px; cursor: pointer; }
+    .primary { border: 1px solid #2463eb; background: #2463eb; color: #ffffff; }
+    .secondary { border: 1px solid #c7d1de; background: #ffffff; color: #17202f; }
+    .danger { border: 1px solid #e0a1a1; background: #fff8f8; color: #a32020; }
+    .primary:hover { background: #1d55cc; }
+    .secondary:hover { background: #f2f5f8; }
+    .danger:hover { background: #ffecec; }
+    pre { margin: 0; min-height: 460px; max-height: 64vh; overflow: auto; padding: 14px; background: #0d1117; color: #d8e0ec; border-radius: 0 0 8px 8px; font: 12px/1.55 Consolas, "Liberation Mono", monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .notice { min-height: 34px; color: #526174; font-size: 13px; }
+    @media (max-width: 980px) {
+      .app { grid-template-columns: 1fr; }
+      aside { display: block; }
+      .nav, .side-actions { display: flex; flex-wrap: wrap; margin-top: 14px; }
+      .nav button, .side-actions button { width: auto; }
+      .grid, .form { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside>
+      <div class="brand">
+        <h1>CCProxy Agent</h1>
+        <p>单窗口代理控制台</p>
+      </div>
+      <div class="nav">
+        <button class="active" data-page="overview">运行状态</button>
+        <button data-page="config">配置</button>
+        <button data-page="vision">多模态</button>
+        <button data-page="logs">日志</button>
+      </div>
+      <div class="side-actions">
+        <button id="startProxy">启动代理</button>
+        <button id="restartProxy">重启代理</button>
+        <button id="stopProxy">停止代理</button>
+      </div>
+    </aside>
+
+    <main>
+      <div class="topbar">
+        <h2 id="pageTitle">运行状态</h2>
+        <div class="pill"><span id="statusDot" class="dot"></span><span id="statusText">加载中</span></div>
+      </div>
+
+      <section id="overview" class="section active">
+        <div class="grid">
+          <div class="panel metric"><label>监听地址</label><strong id="listen">-</strong></div>
+          <div class="panel metric"><label>上游</label><strong id="upstream">-</strong></div>
+          <div class="panel metric"><label>上游来源</label><strong id="source">-</strong></div>
+          <div class="panel metric"><label>进程</label><strong id="process">-</strong></div>
+        </div>
+        <div class="panel">
+          <div class="toolbar"><h3>最近日志</h3><button class="secondary" data-page-jump="logs">查看全部</button></div>
+          <pre id="recentLogs"></pre>
+        </div>
+      </section>
+
+      <section id="config" class="section">
+        <div class="panel">
+          <div class="toolbar">
+            <h3>基础配置</h3>
+            <div class="buttons"><button id="saveConfig" class="primary">保存并重启</button></div>
+          </div>
+          <div class="form">
+            <div class="field"><label>监听主机</label><input id="serverHost"></div>
+            <div class="field"><label>监听端口</label><input id="serverPort" type="number" min="1" max="65535"></div>
+            <div class="field"><label>自动切换端口</label><div class="check"><input id="serverAutoPort" type="checkbox"><span>端口占用时自动顺延</span></div></div>
+            <div class="field"><label>自动发现上游</label><div class="check"><input id="upstreamAutoDiscover" type="checkbox"><span>上游不可达时扫描本地端口</span></div></div>
+            <div class="field full"><label>上游 Base URL</label><input id="upstreamBaseUrl"></div>
+            <div class="field"><label>上游 Chat Path</label><input id="upstreamChatPath"></div>
+            <div class="field"><label>超时 ms</label><input id="upstreamTimeout" type="number" min="1000"></div>
+            <div class="field"><label>Compact 阈值</label><input id="compactThreshold" type="number" min="1"></div>
+            <div class="field"><label>上下文硬上限</label><input id="hardLimit" type="number" min="1"></div>
+            <div class="field"><label>安全余量</label><input id="safetyMargin" type="number" min="0"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="vision" class="section">
+        <div class="panel">
+          <div class="toolbar">
+            <h3>多模态配置</h3>
+            <div class="buttons"><button id="saveVision" class="primary">保存并重启</button></div>
+          </div>
+          <div class="form">
+            <div class="field"><label>启用多模态预处理</label><div class="check"><input id="visionEnabled" type="checkbox"><span>图片先转文字摘要再发给下游</span></div></div>
+            <div class="field"><label>比较多个视觉模型</label><div class="check"><input id="visionCompare" type="checkbox"><span>同时调用 models 列表</span></div></div>
+            <div class="field full"><label>视觉 Base URL</label><input id="visionBaseUrl"></div>
+            <div class="field"><label>视觉 Chat Path</label><input id="visionChatPath"></div>
+            <div class="field"><label>默认视觉模型</label><input id="visionModel"></div>
+            <div class="field full"><label>视觉模型列表，逗号分隔</label><input id="visionModels"></div>
+            <div class="field"><label>API Key 环境变量名</label><input id="visionApiKeyEnv"></div>
+            <div class="field"><label>超时 ms</label><input id="visionTimeout" type="number" min="1000"></div>
+            <div class="field"><label>每次最多图片数</label><input id="visionMaxImages" type="number" min="1"></div>
+            <div class="field"><label>单图最大字节</label><input id="visionMaxBytes" type="number" min="1"></div>
+            <div class="field"><label>摘要 max_tokens</label><input id="visionSummaryTokens" type="number" min="1"></div>
+            <div class="field"><label>摘要后移除原图</label><div class="check"><input id="visionStripImages" type="checkbox"><span>避免非视觉模型收到图片块</span></div></div>
+            <div class="field full"><label>视觉系统提示词</label><textarea id="visionSystemPrompt"></textarea></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="logs" class="section">
+        <div class="panel">
+          <div class="toolbar">
+            <h3>运行日志</h3>
+            <div class="buttons"><button id="clearLogs" class="secondary">清空显示</button></div>
+          </div>
+          <pre id="logsBox"></pre>
+        </div>
+      </section>
+
+      <div id="notice" class="notice"></div>
+    </main>
+  </div>
+  <script src="./renderer.js"></script>
+</body>
+</html>

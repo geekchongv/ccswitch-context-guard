@@ -4,6 +4,7 @@ import { AppConfig, ChatCompletionRequest } from "./types.js";
 import { Logger } from "./logger.js";
 import { Orchestrator } from "./orchestrator.js";
 import { UpstreamClient } from "./upstream-client.js";
+import { DashboardStatus, renderDashboard, renderNotFound, serializeLogs } from "./dashboard.js";
 
 async function readRawBody(request: http.IncomingMessage): Promise<Buffer> {
   const chunks: Buffer[] = [];
@@ -18,6 +19,16 @@ async function readRawBody(request: http.IncomingMessage): Promise<Buffer> {
 function writeJson(response: http.ServerResponse, statusCode: number, body: unknown): void {
   response.writeHead(statusCode, { "content-type": "application/json; charset=utf-8" });
   response.end(JSON.stringify(body));
+}
+
+function writeHtml(response: http.ServerResponse, statusCode: number, body: string): void {
+  response.writeHead(statusCode, { "content-type": "text/html; charset=utf-8" });
+  response.end(body);
+}
+
+function writeText(response: http.ServerResponse, statusCode: number, body: string): void {
+  response.writeHead(statusCode, { "content-type": "text/plain; charset=utf-8" });
+  response.end(body);
 }
 
 function isJsonRequest(request: http.IncomingMessage): boolean {
@@ -86,7 +97,22 @@ async function pipeUpstreamResponse(upstreamResponse: Response, response: http.S
   });
 }
 
-export function createServer(config: AppConfig, logger: Logger, orchestrator: Orchestrator): http.Server {
+export interface ServerOptions {
+  getStatus?: () => DashboardStatus;
+  requestShutdown?: (reason: string) => void;
+}
+
+function isLoopbackRequest(request: http.IncomingMessage): boolean {
+  const address = request.socket.remoteAddress ?? "";
+  return address === "127.0.0.1" || address === "::1" || address === "::ffff:127.0.0.1";
+}
+
+export function createServer(
+  config: AppConfig,
+  logger: Logger,
+  orchestrator: Orchestrator,
+  options: ServerOptions = {},
+): http.Server {
   const upstreamClient = new UpstreamClient(config.upstream);
 
   return http.createServer(async (request, response) => {
@@ -94,11 +120,45 @@ export function createServer(config: AppConfig, logger: Logger, orchestrator: Or
       const routeWithQuery = request.url ?? "/";
       const routePath = routeWithQuery.split("?")[0] ?? "/";
 
+      if (request.method === "GET" && config.ui.enabled && routePath === "/") {
+        writeHtml(response, 200, renderDashboard());
+        return;
+      }
+
+      if (request.method === "GET" && config.ui.enabled && routePath === "/status") {
+        writeJson(response, 200, options.getStatus?.() ?? {
+          version: "unknown",
+          listen: `http://${config.server.host}:${config.server.port}`,
+          upstream: `${config.upstream.baseUrl}${config.upstream.chatPath}`,
+          upstreamSource: "configured",
+          patcherApplied: false,
+          startedAt: new Date().toISOString(),
+          pid: process.pid,
+        });
+        return;
+      }
+
+      if (request.method === "GET" && config.ui.enabled && routePath === "/logs") {
+        writeJson(response, 200, serializeLogs(logger.snapshot()));
+        return;
+      }
+
+      if (request.method === "POST" && config.ui.enabled && routePath === "/shutdown") {
+        if (!isLoopbackRequest(request)) {
+          writeJson(response, 403, { ok: false, error: "shutdown is only allowed from localhost" });
+          return;
+        }
+        writeJson(response, 202, { ok: true, message: "shutdown requested" });
+        setTimeout(() => options.requestShutdown?.("dashboard"), 25);
+        return;
+      }
+
       if (request.method === "GET" && routePath === "/health") {
         writeJson(response, 200, {
           ok: true,
           service: "ccproxy-agent",
           upstream: config.upstream.baseUrl,
+          dashboard: config.ui.enabled ? `http://${config.server.host}:${config.server.port}/` : null,
         });
         return;
       }
@@ -132,6 +192,10 @@ export function createServer(config: AppConfig, logger: Logger, orchestrator: Or
 
       await pipeUpstreamResponse(upstreamResponse, response);
     } catch (error) {
+      if (request.method === "GET" && (request.url ?? "/").split("?")[0] === "/favicon.ico") {
+        writeText(response, 404, renderNotFound("/favicon.ico"));
+        return;
+      }
       logger.error("Request handling failed", {
         message: error instanceof Error ? error.message : String(error),
       });

@@ -50,6 +50,10 @@ function buildConfig(configLibraryPath: string, runtimeDirectory: string): AppCo
     runtime: {
       directory: runtimeDirectory,
     },
+    ui: {
+      enabled: false,
+      openOnStart: false,
+    },
     claudeConfigPatch: {
       enabled: false,
     },

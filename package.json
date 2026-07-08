@@ -1,21 +1,24 @@
 {
   "name": "ccproxy-agent",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "A local orchestration proxy above ccswitch for compaction, token budgeting, and multimodal routing.",
   "type": "module",
-  "main": "dist/index.js",
+  "main": "dist/electron-main.js",
   "bin": {
     "ccproxy-agent": "./dist/index.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "bundle:pkg": "esbuild src/index.ts --bundle --platform=node --format=cjs --outfile=build/pkg/index.cjs",
+    "build:gui": "npm run build && esbuild ./src/gui-preload.ts --bundle --platform=node --format=cjs --external:electron --outfile=dist/gui-preload.cjs && powershell -NoProfile -Command \"New-Item -ItemType Directory -Force dist\\gui | Out-Null; Copy-Item src\\gui\\* dist\\gui\\ -Recurse -Force\"",
+    "bundle:pkg": "esbuild ././src/index.ts --bundle --platform=node --format=cjs --outfile=build/pkg/index.cjs",
     "dev": "tsx src/index.ts",
+    "dev:gui": "npm run build:gui && electron .",
     "start": "node dist/index.js",
     "check": "tsc --noEmit -p tsconfig.json",
     "probe": "tsx src/probe.ts",
     "test": "tsx --test src/**/*.test.ts",
-    "package:exe": "npm run build && npm run bundle:pkg && pkg build/pkg/index.cjs --targets node18-win-x64 --output release/ccproxy-agent.exe && powershell -NoProfile -Command \"New-Item -ItemType Directory -Force release | Out-Null; Copy-Item config.json release\\config.json -Force\""
+    "package:exe": "npm run build && npm run bundle:pkg && pkg build/pkg/index.cjs --targets node18-win-x64 --output release/ccproxy-agent.exe && powershell -NoProfile -Command \"New-Item -ItemType Directory -Force release | Out-Null; Copy-Item config.json release\\config.json -Force\"",
+    "package:gui": "npm run build:gui && electron-builder --win portable && powershell -NoProfile -Command \"Copy-Item config.json release-gui\\config.json -Force\""
   },
   "keywords": [
     "proxy",
@@ -47,8 +50,31 @@
   },
   "devDependencies": {
     "@types/node": "^26.1.0",
+    "electron": "^43.1.0",
+    "electron-builder": "^26.15.3",
     "pkg": "^5.8.1",
     "tsx": "^4.23.0",
     "typescript": "^6.0.3"
+  },
+  "build": {
+    "appId": "local.ccproxy.agent",
+    "productName": "CCProxy Agent",
+    "directories": {
+      "output": "release-gui"
+    },
+    "files": [
+      "dist/**/*",
+      "config.json",
+      "config.example.json",
+      "README.md",
+      "docs/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "portable"
+      ],
+      "artifactName": "CCProxy-Agent-v${version}.${ext}"
+    }
   }
 }

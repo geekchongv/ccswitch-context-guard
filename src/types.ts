@@ -9,6 +9,8 @@ export type JsonValue =
 export interface ServerConfig {
   host: string;
   port: number;
+  /** 若为 true,配置端口被占用时自动递增探测可用端口(默认 true)。 */
+  autoPort?: boolean;
 }
 
 export interface UpstreamConfig {
@@ -16,6 +18,8 @@ export interface UpstreamConfig {
   chatPath: string;
   timeoutMs: number;
   aiRoutes?: string[];
+  /** 若为 true,配置的上游不可达时自动扫描本地候选端口(默认 true)。 */
+  autoDiscover?: boolean;
 }
 
 export interface TokenPolicyConfig {
@@ -57,6 +61,11 @@ export interface RuntimeConfig {
   directory: string;
 }
 
+export interface UiConfig {
+  enabled: boolean;
+  openOnStart: boolean;
+}
+
 export interface ClaudeConfigPatchConfig {
   enabled: boolean;
   settingsPath?: string;
@@ -77,6 +86,7 @@ export interface AppConfig {
   vision: VisionConfig;
   logging: LoggingConfig;
   runtime: RuntimeConfig;
+  ui: UiConfig;
   claudeConfigPatch: ClaudeConfigPatchConfig;
   claudeDesktopConfigPatch: ClaudeDesktopConfigPatchConfig;
 }

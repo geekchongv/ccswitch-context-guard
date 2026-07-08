@@ -441,6 +441,28 @@ export class Orchestrator {
     request: ChatCompletionRequest,
     contextError: ContextLimitError,
   ): MaxTokensAdjustment {
+    if (typeof contextError.inputTokens === "number" && typeof contextError.contextLimit === "number") {
+      const originalMaxTokens = getRequestedOutputTokens(request, this.config.tokenPolicy.responseReserve);
+      const safetyAvailableOutputTokens = Math.floor(
+        contextError.contextLimit - this.config.tokenPolicy.safetyMargin - contextError.inputTokens,
+      );
+      const absoluteAvailableOutputTokens = Math.floor(contextError.contextLimit - contextError.inputTokens - 1);
+      const adjustedMaxTokens =
+        safetyAvailableOutputTokens >= this.config.tokenPolicy.minOutputTokens
+          ? safetyAvailableOutputTokens
+          : Math.max(1, absoluteAvailableOutputTokens);
+
+      if (adjustedMaxTokens < originalMaxTokens && contextError.inputTokens < contextError.contextLimit) {
+        return {
+          request: setRequestedOutputTokens(request, adjustedMaxTokens),
+          adjusted: true,
+          originalMaxTokens,
+          adjustedMaxTokens,
+          reason: "upstream_context_error",
+        };
+      }
+    }
+
     const syntheticBudget = {
       estimate: {
         inputTokens: contextError.inputTokens ?? assessBudget(

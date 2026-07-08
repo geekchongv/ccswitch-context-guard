@@ -49,6 +49,8 @@ CCProxy Agent can parse this class of error and retry once with a safer output b
 - Optional Claude CLI settings patching.
 - Optional Claude Desktop 3P config patching.
 - Multimodal image summarization for text-only downstream models.
+- Automatic listen-port fallback when the configured port is already busy.
+- Built-in local dashboard with status and runtime logs.
 - Local logs and session snapshots.
 - Windows exe packaging support.
 
@@ -77,6 +79,10 @@ CCProxy Agent: http://127.0.0.1:15722
 ccswitch:      http://127.0.0.1:15721
 ```
 
+If `15722` is already in use, CCProxy Agent automatically tries the next ports and patches Claude to the port it actually opened. The dashboard is available at the active listen URL, for example `http://127.0.0.1:15723/`.
+
+Use the dashboard Stop button to close the proxy cleanly. It restores patched Claude settings before the process exits.
+
 Health check:
 
 ```bash
@@ -99,6 +105,17 @@ Important defaults:
     "autoReduceMaxTokens": true,
     "retryOnContextError": true,
     "minOutputTokens": 1024
+  }
+}
+```
+
+UI defaults:
+
+```json
+{
+  "ui": {
+    "enabled": true,
+    "openOnStart": true
   }
 }
 ```

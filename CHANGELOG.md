@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.4.1
+
+- Added automatic listen-port fallback when the configured proxy port is busy.
+- Added upstream auto-discovery for common local ccswitch ports.
+- Added a built-in local dashboard with status and live runtime logs.
+- Opens the dashboard on startup by default when `ui.openOnStart` is enabled.
+- Added a local-only dashboard shutdown action that restores patched Claude settings before exit.
+- Applies Claude CLI/Desktop config patches only after the proxy is actually listening.
+
 ## v0.4.0
 
 - Added true multimodal vision summarization for Claude Desktop image inputs.

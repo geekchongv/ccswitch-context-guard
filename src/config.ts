@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { AppConfig } from "./types.js";
@@ -8,12 +8,14 @@ const defaultConfig: AppConfig = {
   server: {
     host: "127.0.0.1",
     port: 15722,
+    autoPort: true,
   },
   upstream: {
     baseUrl: "http://127.0.0.1:15721",
     chatPath: "/v1/chat/completions",
     timeoutMs: 120000,
     aiRoutes: ["/v1/chat/completions", "/v1/messages"],
+    autoDiscover: true,
   },
   tokenPolicy: {
     compactThreshold: 180000,
@@ -51,6 +53,10 @@ const defaultConfig: AppConfig = {
   runtime: {
     directory: "./runtime",
   },
+  ui: {
+    enabled: true,
+    openOnStart: true,
+  },
   claudeConfigPatch: {
     enabled: true,
     settingsPath: path.join(os.homedir(), ".claude", "settings.json"),
@@ -61,7 +67,7 @@ const defaultConfig: AppConfig = {
   },
 };
 
-function mergeConfig(base: AppConfig, override: Partial<AppConfig>): AppConfig {
+export function mergeConfig(base: AppConfig, override: Partial<AppConfig>): AppConfig {
   return {
     ...base,
     ...override,
@@ -71,16 +77,22 @@ function mergeConfig(base: AppConfig, override: Partial<AppConfig>): AppConfig {
     vision: { ...base.vision, ...override.vision },
     logging: { ...base.logging, ...override.logging },
     runtime: { ...base.runtime, ...override.runtime },
+    ui: { ...base.ui, ...override.ui },
     claudeConfigPatch: { ...base.claudeConfigPatch, ...override.claudeConfigPatch },
     claudeDesktopConfigPatch: { ...base.claudeDesktopConfigPatch, ...override.claudeDesktopConfigPatch },
   };
 }
 
-export function loadConfig(): AppConfig {
+export function getConfigPath(): string {
   const baseDirectory = getBaseDirectory();
-  const configPath = process.env.CCPROXY_CONFIG
+  return process.env.CCPROXY_CONFIG
     ? path.resolve(process.env.CCPROXY_CONFIG)
     : path.resolve(baseDirectory, "config.json");
+}
+
+export function loadConfig(): AppConfig {
+  const baseDirectory = getBaseDirectory();
+  const configPath = getConfigPath();
 
   let config = defaultConfig;
 
@@ -94,4 +106,10 @@ export function loadConfig(): AppConfig {
   mkdirSync(path.resolve(baseDirectory, config.runtime.directory, "sessions"), { recursive: true });
 
   return config;
+}
+
+export function saveConfig(config: AppConfig): void {
+  const configPath = getConfigPath();
+  mkdirSync(path.dirname(configPath), { recursive: true });
+  writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
 }

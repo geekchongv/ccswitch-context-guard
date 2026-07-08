@@ -1,7 +1,8 @@
 {
   "server": {
     "host": "127.0.0.1",
-    "port": 15722
+    "port": 15722,
+    "autoPort": true
   },
   "upstream": {
     "baseUrl": "http://127.0.0.1:15721",
@@ -10,7 +11,8 @@
     "aiRoutes": [
       "/v1/chat/completions",
       "/v1/messages"
-    ]
+    ],
+    "autoDiscover": true
   },
   "tokenPolicy": {
     "compactThreshold": 180000,
@@ -48,6 +50,10 @@
   },
   "runtime": {
     "directory": "./runtime"
+  },
+  "ui": {
+    "enabled": true,
+    "openOnStart": true
   },
   "claudeConfigPatch": {
     "enabled": true
