@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+release/
+*.exe
+*.zip
+
+# Local runtime data
+logs/
+runtime/
+test-output/
+*.log
+
+# Local config and experiments
+config.json
+test-configs/
+tmp-compact-prompt.txt
+
+# Packaged distributions
+ccproxy-agent-v*-dist/
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

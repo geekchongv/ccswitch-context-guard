@@ -1,0 +1,44 @@
+{
+  "server": {
+    "host": "127.0.0.1",
+    "port": 15722
+  },
+  "upstream": {
+    "baseUrl": "http://127.0.0.1:15721",
+    "chatPath": "/v1/chat/completions",
+    "timeoutMs": 120000,
+    "aiRoutes": [
+      "/v1/chat/completions",
+      "/v1/messages"
+    ]
+  },
+  "tokenPolicy": {
+    "compactThreshold": 180000,
+    "hardLimit": 200000,
+    "responseReserve": 12000,
+    "chunkTarget": 90000,
+    "safetyMargin": 8000,
+    "compactMode": "warn",
+    "compactWarningText": "[上下文提醒] 当前会话已经接近上下文上限，建议你现在执行 /compact 后再继续。",
+    "autoReduceMaxTokens": true,
+    "retryOnContextError": true,
+    "minOutputTokens": 1024
+  },
+  "vision": {
+    "enabled": false,
+    "baseUrl": "http://127.0.0.1:15721",
+    "chatPath": "/v1/chat/completions",
+    "model": "replace-with-your-vision-model",
+    "systemPrompt": "Analyze the provided image for a coding assistant. Return a concise, structured summary of visible UI, text, errors, and actionable details."
+  },
+  "logging": {
+    "level": "info",
+    "directory": "./logs"
+  },
+  "runtime": {
+    "directory": "./runtime"
+  },
+  "claudeConfigPatch": {
+    "enabled": true
+  }
+}
