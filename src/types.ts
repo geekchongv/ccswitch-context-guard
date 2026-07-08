@@ -36,6 +36,15 @@ export interface VisionConfig {
   baseUrl: string;
   chatPath: string;
   model: string;
+  models?: string[];
+  compareModels: boolean;
+  apiKeyEnv?: string;
+  apiKey?: string;
+  timeoutMs: number;
+  maxImagesPerRequest: number;
+  maxImageBytes: number;
+  summaryMaxTokens: number;
+  stripImagesAfterSummary: boolean;
   systemPrompt: string;
 }
 
@@ -78,9 +87,14 @@ export interface ChatMessagePartText {
 }
 
 export interface ChatMessagePartImage {
-  type: "image_url" | "input_image";
+  type: "image_url" | "input_image" | "image";
   image_url?: string | { url: string };
   url?: string;
+  source?: {
+    type?: string;
+    media_type?: string;
+    data?: string;
+  };
 }
 
 export type ChatMessagePart = ChatMessagePartText | ChatMessagePartImage | Record<string, JsonValue>;
@@ -116,6 +130,12 @@ export interface BudgetAssessment {
 export interface VisionAnalysisResult {
   used: boolean;
   summary?: string;
+  modelSummaries?: Array<{
+    model: string;
+    summary: string;
+  }>;
+  imageCount?: number;
+  error?: string;
 }
 
 export interface OrchestrationRecord {

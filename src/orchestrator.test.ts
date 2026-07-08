@@ -46,6 +46,12 @@ function buildTestConfig(port: number): AppConfig {
       baseUrl: "",
       chatPath: "",
       model: "",
+      compareModels: false,
+      timeoutMs: 5000,
+      maxImagesPerRequest: 5,
+      maxImageBytes: 5_000_000,
+      summaryMaxTokens: 1500,
+      stripImagesAfterSummary: true,
       systemPrompt: "",
     },
     logging: {

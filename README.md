@@ -48,6 +48,7 @@ CCProxy Agent can parse this class of error and retry once with a safer output b
 - Fallback chunking for requests that remain too large.
 - Optional Claude CLI settings patching.
 - Optional Claude Desktop 3P config patching.
+- Multimodal image summarization for text-only downstream models.
 - Local logs and session snapshots.
 - Windows exe packaging support.
 
@@ -59,6 +60,7 @@ CCProxy Agent can parse this class of error and retry once with a safer output b
 - Chunking is a fallback, not a full long-task planning engine.
 - The project is currently tested primarily on Windows.
 - Claude Desktop reads 3P config at launch, so restart Claude Desktop after starting the proxy.
+- Vision API keys should be provided via environment variables, not committed into `config.json`.
 
 ## Quick Start From Source
 
@@ -100,6 +102,31 @@ Important defaults:
   }
 }
 ```
+
+Vision defaults:
+
+```json
+{
+  "vision": {
+    "enabled": true,
+    "models": [
+      "qwen3-vl-30b-a3b-instruct",
+      "Qwen3.6-35B-A3B"
+    ],
+    "compareModels": true,
+    "apiKeyEnv": "CCPROXY_VISION_API_KEY",
+    "stripImagesAfterSummary": true
+  }
+}
+```
+
+Set the vision API key:
+
+```powershell
+[Environment]::SetEnvironmentVariable("CCPROXY_VISION_API_KEY", "your-token", "User")
+```
+
+When the downstream model does not support images, CCProxy Agent calls the vision models, injects a `[VISION SUMMARY]`, and removes the original image blocks before forwarding to ccswitch.
 
 When `claudeConfigPatch.enabled` is `true`, CCProxy Agent temporarily modifies Claude CLI settings so requests go through `http://127.0.0.1:15722`. On normal shutdown it restores the previous value.
 
@@ -162,6 +189,7 @@ The generated exe is written to `release/ccproxy-agent.exe`.
 - [Validation](docs/validation.md)
 - [v0.2 Release Notes](docs/ccproxy-agent-v0.2-release.md)
 - [v0.3 Release Notes](docs/ccproxy-agent-v0.3-release.md)
+- [v0.4 Release Notes](docs/ccproxy-agent-v0.4-release.md)
 
 ## Security And Privacy
 
@@ -179,5 +207,6 @@ CCProxy Agent 是一个放在 Claude CLI / Claude Desktop 和 ccswitch 中间的
 - `input_tokens + max_tokens` 超过模型上下文时，自动降低 `max_tokens`。
 - 上游返回 context limit `400` 时，解析错误并自动重试一次。
 - 支持临时接管 Claude Desktop 3P 网关配置。
+- 支持 Claude Desktop 发图后由代理调用视觉模型生成摘要，再转给不支持图片的 GLM-5.2。
 
 它不是 ccswitch 的替代品，而是 ccswitch 上层的防撞护栏。

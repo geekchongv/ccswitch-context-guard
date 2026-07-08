@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.4.0
+
+- Added true multimodal vision summarization for Claude Desktop image inputs.
+- Extracts Anthropic/OpenAI-style image blocks and calls configured vision models.
+- Supports comparing `qwen3-vl-30b-a3b-instruct` and `Qwen3.6-35B-A3B`.
+- Injects a structured `[VISION SUMMARY]` block for downstream text-only models such as GLM-5.2.
+- Strips image blocks after summarization by default so non-vision downstream models do not receive unsupported image payloads.
+- Reads the vision API key from `CCPROXY_VISION_API_KEY` instead of committing secrets to config.
+
 ## v0.3.2
 
 - Fixed Claude Desktop probe failures caused by forwarding hop-by-hop HTTP headers into Node fetch.

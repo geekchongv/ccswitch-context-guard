@@ -30,11 +30,19 @@ const defaultConfig: AppConfig = {
   },
   vision: {
     enabled: false,
-    baseUrl: "http://127.0.0.1:15721",
+    baseUrl: "https://mgallery.haier.net",
     chatPath: "/v1/chat/completions",
-    model: "",
+    model: "qwen3-vl-30b-a3b-instruct",
+    models: ["qwen3-vl-30b-a3b-instruct", "Qwen3.6-35B-A3B"],
+    compareModels: true,
+    apiKeyEnv: "CCPROXY_VISION_API_KEY",
+    timeoutMs: 120000,
+    maxImagesPerRequest: 5,
+    maxImageBytes: 5_000_000,
+    summaryMaxTokens: 1500,
+    stripImagesAfterSummary: true,
     systemPrompt:
-      "Analyze the provided image for a coding assistant. Return a concise, structured summary of visible UI, text, errors, and actionable details.",
+      "你是给编程助手使用的视觉分析器。请用中文提取图片中的关键信息：1) OCR文字；2) UI/页面结构；3) 报错或异常；4) 和用户问题相关的可执行线索。保持简洁但不要漏掉关键配置、模型名、URL、端口、按钮和错误信息。",
   },
   logging: {
     level: "info",
