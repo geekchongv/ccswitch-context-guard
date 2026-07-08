@@ -21,6 +21,7 @@ tmp-compact-prompt.txt
 
 # Packaged distributions
 ccproxy-agent-v*-dist/
+github-release/
 
 # OS/editor noise
 .DS_Store
