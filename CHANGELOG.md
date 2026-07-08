@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.3.0
+
+- Added Claude Desktop 3P config patching through `%LOCALAPPDATA%/Claude-3p/configLibrary`.
+- Preserves ccswitch-generated Desktop gateway paths such as `/claude-desktop`.
+- Restores Desktop gateway config on shutdown and recovers stale patches after crashes.
+- Treats prefixed routes such as `/claude-desktop/v1/messages` as AI routes.
+- Added regression test for Desktop gateway patch and restore.
+
 ## v0.2.0
 
 - Added automatic `max_tokens` reduction before forwarding requests.

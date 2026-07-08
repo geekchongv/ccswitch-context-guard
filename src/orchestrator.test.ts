@@ -58,6 +58,9 @@ function buildTestConfig(port: number): AppConfig {
     claudeConfigPatch: {
       enabled: false,
     },
+    claudeDesktopConfigPatch: {
+      enabled: false,
+    },
   };
 }
 

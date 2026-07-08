@@ -26,7 +26,7 @@ function isJsonRequest(request: http.IncomingMessage): boolean {
 
 function isAiRoute(config: AppConfig, routePath: string): boolean {
   const routes = config.upstream.aiRoutes ?? [config.upstream.chatPath];
-  return routes.includes(routePath);
+  return routes.some((route) => routePath === route || routePath.endsWith(route));
 }
 
 function copyResponseHeaders(upstreamResponse: Response, response: http.ServerResponse): void {

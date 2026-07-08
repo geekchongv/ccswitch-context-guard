@@ -7,7 +7,7 @@ It does not replace ccswitch. It sits above it and adds context-window guardrail
 - warns when a session is close to the compact threshold
 - automatically lowers `max_tokens` when input plus requested output would exceed the safe context budget
 - retries once after upstream context-limit `400` errors
-- temporarily points Claude CLI to the proxy on startup and restores the original config on shutdown
+- temporarily points Claude CLI and Claude Desktop 3P gateway configs to the proxy on startup and restores the original config on shutdown
 - writes local Chinese logs for debugging
 
 Default topology:
@@ -47,6 +47,7 @@ CCProxy Agent can parse this class of error and retry once with a safer output b
 - Request budgeting for `/v1/messages` and `/v1/chat/completions`.
 - Fallback chunking for requests that remain too large.
 - Optional Claude CLI settings patching.
+- Optional Claude Desktop 3P config patching.
 - Local logs and session snapshots.
 - Windows exe packaging support.
 
@@ -57,6 +58,7 @@ CCProxy Agent can parse this class of error and retry once with a safer output b
 - Multimodal routing exists as a planned path but is disabled by default.
 - Chunking is a fallback, not a full long-task planning engine.
 - The project is currently tested primarily on Windows.
+- Claude Desktop reads 3P config at launch, so restart Claude Desktop after starting the proxy.
 
 ## Quick Start From Source
 
@@ -101,6 +103,26 @@ Important defaults:
 
 When `claudeConfigPatch.enabled` is `true`, CCProxy Agent temporarily modifies Claude CLI settings so requests go through `http://127.0.0.1:15722`. On normal shutdown it restores the previous value.
 
+When `claudeDesktopConfigPatch.enabled` is `true`, CCProxy Agent looks for the applied Claude Desktop 3P config under:
+
+```text
+%LOCALAPPDATA%/Claude-3p/configLibrary
+```
+
+If ccswitch configured Desktop with:
+
+```text
+http://127.0.0.1:15721/claude-desktop
+```
+
+the proxy temporarily rewrites it to:
+
+```text
+http://127.0.0.1:15722/claude-desktop
+```
+
+Fully quit and reopen Claude Desktop after starting CCProxy Agent.
+
 ## Logs
 
 Logs are written to:
@@ -139,6 +161,7 @@ The generated exe is written to `release/ccproxy-agent.exe`.
 - [Design](docs/design.md)
 - [Validation](docs/validation.md)
 - [v0.2 Release Notes](docs/ccproxy-agent-v0.2-release.md)
+- [v0.3 Release Notes](docs/ccproxy-agent-v0.3-release.md)
 
 ## Security And Privacy
 
@@ -155,5 +178,6 @@ CCProxy Agent 是一个放在 Claude CLI / Claude Desktop 和 ccswitch 中间的
 - 快到上下文上限时提醒你执行 `/compact`。
 - `input_tokens + max_tokens` 超过模型上下文时，自动降低 `max_tokens`。
 - 上游返回 context limit `400` 时，解析错误并自动重试一次。
+- 支持临时接管 Claude Desktop 3P 网关配置。
 
 它不是 ccswitch 的替代品，而是 ccswitch 上层的防撞护栏。

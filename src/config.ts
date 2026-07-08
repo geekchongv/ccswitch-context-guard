@@ -47,6 +47,10 @@ const defaultConfig: AppConfig = {
     enabled: true,
     settingsPath: path.join(os.homedir(), ".claude", "settings.json"),
   },
+  claudeDesktopConfigPatch: {
+    enabled: true,
+    configLibraryPath: path.join(process.env.LOCALAPPDATA ?? path.join(os.homedir(), "AppData", "Local"), "Claude-3p", "configLibrary"),
+  },
 };
 
 function mergeConfig(base: AppConfig, override: Partial<AppConfig>): AppConfig {
@@ -60,6 +64,7 @@ function mergeConfig(base: AppConfig, override: Partial<AppConfig>): AppConfig {
     logging: { ...base.logging, ...override.logging },
     runtime: { ...base.runtime, ...override.runtime },
     claudeConfigPatch: { ...base.claudeConfigPatch, ...override.claudeConfigPatch },
+    claudeDesktopConfigPatch: { ...base.claudeDesktopConfigPatch, ...override.claudeDesktopConfigPatch },
   };
 }
 

@@ -40,5 +40,8 @@
   },
   "claudeConfigPatch": {
     "enabled": true
+  },
+  "claudeDesktopConfigPatch": {
+    "enabled": true
   }
 }

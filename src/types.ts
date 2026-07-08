@@ -53,6 +53,14 @@ export interface ClaudeConfigPatchConfig {
   settingsPath?: string;
 }
 
+export interface ClaudeDesktopConfigPatchConfig {
+  enabled: boolean;
+  configLibraryPath?: string;
+  gatewayBaseUrl?: string;
+  apiKey?: string;
+  authScheme?: "bearer" | "x-api-key";
+}
+
 export interface AppConfig {
   server: ServerConfig;
   upstream: UpstreamConfig;
@@ -61,6 +69,7 @@ export interface AppConfig {
   logging: LoggingConfig;
   runtime: RuntimeConfig;
   claudeConfigPatch: ClaudeConfigPatchConfig;
+  claudeDesktopConfigPatch: ClaudeDesktopConfigPatchConfig;
 }
 
 export interface ChatMessagePartText {

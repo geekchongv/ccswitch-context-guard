@@ -7,6 +7,7 @@
 - proactive `/compact` reminders before the session gets too large
 - token budget enforcement before the upstream rejects a request
 - automatic output-token reduction and one-shot retry for context-limit errors
+- Claude Desktop 3P gateway patching
 - multimodal detection and image-first routing
 - structured logging for replay and debugging
 
@@ -117,6 +118,15 @@ Stores JSON snapshots under `runtime/sessions/`:
 - vision summary
 - orchestration decision
 
+### Claude Desktop Config Patcher
+
+- reads `%LOCALAPPDATA%/Claude-3p/configLibrary/_meta.json`
+- patches only the currently applied profile
+- rewrites `inferenceGatewayBaseUrl` from the ccswitch gateway to the ccproxy-agent gateway
+- preserves the path suffix, for example `/claude-desktop`
+- stores restore state under `runtime/claude-desktop-config-patch.json`
+- restores the original gateway on shutdown
+
 ## 5. Request Flow
 
 ## 5.1 Normal text request
@@ -155,6 +165,15 @@ contextLimit - safetyMargin - inputTokens
 
 4. Retry once if the computed output budget is above `minOutputTokens`
 5. Return the second response, or the original error if no safe retry is possible
+
+## 5.6 Claude Desktop 3P request
+
+1. ccswitch writes a Claude Desktop 3P gateway config such as `http://127.0.0.1:15721/claude-desktop`
+2. CCProxy Agent starts and rewrites the applied config to `http://127.0.0.1:15722/claude-desktop`
+3. Claude Desktop is restarted so it reads the patched config
+4. Desktop sends requests such as `/claude-desktop/v1/messages`
+5. The proxy recognizes routes ending in `/v1/messages` and applies the token guard
+6. The request is forwarded to ccswitch at `http://127.0.0.1:15721/claude-desktop/v1/messages`
 
 ## 5.4 Vision request
 

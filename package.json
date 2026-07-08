@@ -1,6 +1,6 @@
 {
   "name": "ccproxy-agent",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A local orchestration proxy above ccswitch for compaction, token budgeting, and multimodal routing.",
   "type": "module",
   "main": "dist/index.js",
