@@ -179,3 +179,68 @@ test("orchestrator preserves authorization headers for Claude Desktop gateway re
     await once(upstream, "close");
   }
 });
+
+test("server filters hop-by-hop headers before forwarding orchestrated Desktop requests", async () => {
+  mkdirSync("test-output/logs", { recursive: true });
+  mkdirSync("test-output/runtime/sessions", { recursive: true });
+
+  const receivedHeaders: http.IncomingHttpHeaders[] = [];
+  const upstream = http.createServer(async (request, response) => {
+    await readJson(request);
+    receivedHeaders.push(request.headers);
+
+    response.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+    response.end(
+      JSON.stringify({
+        content: [{ type: "text", text: "headers ok" }],
+      }),
+    );
+  });
+
+  upstream.listen(0, "127.0.0.1");
+  await once(upstream, "listening");
+  const upstreamAddress = upstream.address();
+  assert.ok(upstreamAddress && typeof upstreamAddress === "object");
+
+  const proxyServer = http.createServer();
+
+  try {
+    const config = buildTestConfig(upstreamAddress.port);
+    const { createServer } = await import("./server.js");
+    const orchestrator = new Orchestrator(
+      config,
+      new Logger(config.logging),
+      new SessionStore(config.runtime.directory),
+    );
+    const server = createServer(config, new Logger(config.logging), orchestrator);
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const proxyAddress = server.address();
+    assert.ok(proxyAddress && typeof proxyAddress === "object");
+
+    const response = await fetch(`http://127.0.0.1:${proxyAddress.port}/claude-desktop/v1/messages`, {
+      method: "POST",
+      headers: {
+        authorization: "Bearer desktop-token",
+        connection: "keep-alive",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        messages: [{ role: "user", content: "hello" }],
+        max_tokens: 16,
+      }),
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(receivedHeaders[0]?.authorization, "Bearer desktop-token");
+    assert.equal(receivedHeaders[0]?.connection, "keep-alive");
+    assert.equal(receivedHeaders[0]?.["content-type"], "application/json");
+
+    server.close();
+    await once(server, "close");
+  } finally {
+    proxyServer.close();
+    upstream.close();
+    await once(upstream, "close");
+  }
+});

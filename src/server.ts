@@ -39,7 +39,18 @@ function copyResponseHeaders(upstreamResponse: Response, response: http.ServerRe
 
 function getForwardedHeaders(request: http.IncomingMessage): Record<string, string> {
   const forwardedHeaders: Record<string, string> = {};
-  const blockedHeaders = new Set(["host", "content-length"]);
+  const blockedHeaders = new Set([
+    "host",
+    "content-length",
+    "connection",
+    "keep-alive",
+    "proxy-authenticate",
+    "proxy-authorization",
+    "te",
+    "trailer",
+    "transfer-encoding",
+    "upgrade",
+  ]);
 
   for (const [key, value] of Object.entries(request.headers)) {
     const normalizedKey = key.toLowerCase();

@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.3.2
+
+- Fixed Claude Desktop probe failures caused by forwarding hop-by-hop HTTP headers into Node fetch.
+- Filters `connection`, `keep-alive`, `transfer-encoding`, `upgrade`, and related hop-by-hop headers before upstream calls.
+- Added a regression test for orchestrated Desktop requests with connection-style headers.
+
 ## v0.3.1
 
 - Fixed Claude Desktop gateway authentication failures by preserving upstream request headers in the AI orchestration path.
