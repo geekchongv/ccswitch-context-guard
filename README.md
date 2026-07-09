@@ -9,12 +9,14 @@ A transparent safety proxy that sits between Claude CLI / Claude Desktop and [cc
 </div>
 
 <p align="center">
+  <img alt="CI" src="https://img.shields.io/github/actions/workflow/status/geekchongv/ccswitch-context-guard/ci.yml?branch=main&label=CI&style=flat-square">
   <img alt="version" src="https://img.shields.io/badge/version-v0.4.1-2ea44f?style=flat-square">
+  <img alt="release" src="https://img.shields.io/github/v/release/geekchongv/ccswitch-context-guard?style=flat-square&color=blue">
   <img alt="platform" src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blue?style=flat-square">
   <img alt="language" src="https://img.shields.io/badge/lang-TypeScript-3178c6?style=flat-square">
-  <img alt="license" src="https://img.shields.io/badge/license-MIT-yellow?style=flat-square">
-  <img alt="status" src="https://img.shields.io/badge/status-active%20development-orange?style=flat-square">
-  <img alt="stars" src="https://img.shields.io/badge/⭐-welcome%20stars-ff69b4?style=flat-square">
+  <img alt="license" src="https://img.shields.io/github/license/geekchongv/ccswitch-context-guard?style=flat-square">
+  <img alt="stars" src="https://img.shields.io/github/stars/geekchongv/ccswitch-context-guard?style=flat-square&color=ff69b4">
+  <img alt="downloads" src="https://img.shields.io/github/downloads/geekchongv/ccswitch-context-guard/total?style=flat-square&color=9cf">
 </p>
 
 <p align="center">
