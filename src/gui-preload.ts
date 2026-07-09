@@ -3,12 +3,17 @@ import type { IpcRendererEvent } from "electron";
 import { AppConfig } from "./types.js";
 import { LogEntry } from "./logger.js";
 import { ProxyStatus } from "./proxy-runner.js";
+import { HealthSummary, ProtectionEvent } from "./product-insights.js";
 
 contextBridge.exposeInMainWorld("ccproxy", {
   getState: () => ipcRenderer.invoke("app:getState") as Promise<{
     status: ProxyStatus | null;
     config: AppConfig;
     logs: LogEntry[];
+    insights: {
+      health: HealthSummary;
+      events: ProtectionEvent[];
+    };
   }>,
   saveConfig: (config: AppConfig) => ipcRenderer.invoke("app:saveConfig", config) as Promise<{
     status: ProxyStatus | null;
@@ -26,6 +31,13 @@ contextBridge.exposeInMainWorld("ccproxy", {
     const wrapped = (_event: IpcRendererEvent, entry: LogEntry) => listener(entry);
     ipcRenderer.on("proxy:log", wrapped);
     return () => ipcRenderer.off("proxy:log", wrapped);
+  },
+  onInsights: (listener: (insights: { health: HealthSummary; events: ProtectionEvent[] }) => void) => {
+    const wrapped = (_event: IpcRendererEvent, insights: { health: HealthSummary; events: ProtectionEvent[] }) => {
+      listener(insights);
+    };
+    ipcRenderer.on("proxy:insights", wrapped);
+    return () => ipcRenderer.off("proxy:insights", wrapped);
   },
   onStopped: (listener: (payload: { reason: string }) => void) => {
     const wrapped = (_event: IpcRendererEvent, payload: { reason: string }) => listener(payload);

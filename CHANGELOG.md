@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.4.2
+
+- Added a product-focused health panel to the desktop console.
+- Added a protection event feed for token budgeting, `max_tokens` reductions, context-limit retries, compact reminders, chunking, and vision preprocessing.
+- Added structured product insights derived from existing runtime logs.
+- Added dashboard screenshots to the README.
+- Added v0.4.2 release notes.
+
 ## v0.4.1
 
 - Added automatic listen-port fallback when the configured proxy port is busy.

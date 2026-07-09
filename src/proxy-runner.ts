@@ -12,7 +12,7 @@ import { AppConfig } from "./types.js";
 import { DashboardStatus } from "./dashboard.js";
 
 const MAX_PORT_TRIES = 100;
-const VERSION = "0.4.1";
+const VERSION = "0.4.2";
 
 export type ProxyStatus = DashboardStatus;
 

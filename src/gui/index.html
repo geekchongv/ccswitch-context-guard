@@ -36,6 +36,26 @@
     .metric { padding: 14px; min-height: 84px; }
     .metric label { display: block; color: #66758a; font-size: 12px; margin-bottom: 8px; }
     .metric strong { display: block; font-size: 14px; overflow-wrap: anywhere; }
+    .summary-grid { display: grid; grid-template-columns: minmax(280px, 0.95fr) minmax(360px, 1.35fr); gap: 14px; margin-bottom: 14px; }
+    .health-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding: 14px; }
+    .health-item { display: grid; grid-template-columns: 14px 1fr; gap: 10px; min-height: 72px; padding: 12px; border: 1px solid #e0e7ef; border-radius: 8px; background: #f8fafc; }
+    .health-item strong { display: block; font-size: 14px; margin-bottom: 4px; }
+    .health-item p { margin: 0; color: #66758a; font-size: 12px; overflow-wrap: anywhere; }
+    .health-dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 5px; background: #9aa5b1; }
+    .health-dot.ok { background: #13825f; }
+    .health-dot.warn { background: #b7791f; }
+    .health-dot.off { background: #c0392b; }
+    .event-list { display: grid; gap: 10px; padding: 14px; max-height: 274px; overflow: auto; }
+    .event { display: grid; grid-template-columns: 30px 1fr; gap: 10px; padding: 10px; border: 1px solid #e0e7ef; border-radius: 8px; background: #ffffff; }
+    .event.success { border-left: 3px solid #13825f; }
+    .event.warning { border-left: 3px solid #b7791f; }
+    .event.info { border-left: 3px solid #3b82f6; }
+    .event-icon { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 6px; background: #eef4fb; color: #27364a; font-weight: 700; }
+    .event-title { font-weight: 700; font-size: 13px; }
+    .event-summary { margin-top: 3px; color: #4e5e72; font-size: 12px; overflow-wrap: anywhere; }
+    .event-time { margin-top: 4px; color: #8190a3; font-size: 11px; }
+    .empty { color: #66758a; font-size: 13px; padding: 14px; }
+    .score { color: #66758a; font-size: 12px; }
     .section { display: none; }
     .section.active { display: block; }
     .form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
@@ -63,7 +83,7 @@
       aside { display: block; }
       .nav, .side-actions { display: flex; flex-wrap: wrap; margin-top: 14px; }
       .nav button, .side-actions button { width: auto; }
-      .grid, .form { grid-template-columns: 1fr; }
+      .grid, .form, .summary-grid, .health-grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -99,6 +119,16 @@
           <div class="panel metric"><label>上游</label><strong id="upstream">-</strong></div>
           <div class="panel metric"><label>上游来源</label><strong id="source">-</strong></div>
           <div class="panel metric"><label>进程</label><strong id="process">-</strong></div>
+        </div>
+        <div class="summary-grid">
+          <div class="panel">
+            <div class="toolbar"><h3>健康面板</h3><span id="healthScore" class="score">-</span></div>
+            <div id="healthGrid" class="health-grid"></div>
+          </div>
+          <div class="panel">
+            <div class="toolbar"><h3>保护事件</h3><span id="protectionCount" class="score">-</span></div>
+            <div id="protectionEvents" class="event-list"></div>
+          </div>
         </div>
         <div class="panel">
           <div class="toolbar"><h3>最近日志</h3><button class="secondary" data-page-jump="logs">查看全部</button></div>

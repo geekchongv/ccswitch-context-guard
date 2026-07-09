@@ -3,11 +3,18 @@ const api = window.ccproxy;
 let config = null;
 let status = null;
 let logs = [];
+let insights = null;
 
 const $ = (id) => document.getElementById(id);
 const bool = (id) => $(id).checked;
 const num = (id) => Number($(id).value);
 const val = (id) => $(id).value.trim();
+const escapeHtml = (value) => String(value)
+  .replaceAll("&", "&amp;")
+  .replaceAll("<", "&lt;")
+  .replaceAll(">", "&gt;")
+  .replaceAll('"', "&quot;")
+  .replaceAll("'", "&#39;");
 
 function setNotice(message) {
   $("notice").textContent = message;
@@ -33,6 +40,69 @@ function renderLogs() {
   const text = logs.slice(-1000).map(renderLog).join("\n");
   $("logsBox").textContent = text || "No logs yet.";
   $("recentLogs").textContent = logs.slice(-18).map(renderLog).join("\n") || "No logs yet.";
+}
+
+function renderHealth() {
+  const health = insights?.health;
+  const box = $("healthGrid");
+  if (!box) return;
+
+  if (!health) {
+    box.innerHTML = '<div class="empty">Waiting for proxy health data.</div>';
+    $("healthScore").textContent = "-";
+    return;
+  }
+
+  $("healthScore").textContent = `${health.score.ok} ok / ${health.score.warn} warning / ${health.score.off} off`;
+  box.innerHTML = health.items.map((item) => `
+    <div class="health-item ${item.state}">
+      <span class="health-dot ${item.state}"></span>
+      <div>
+        <strong>${escapeHtml(item.label)}</strong>
+        <p>${escapeHtml(item.detail)}</p>
+      </div>
+    </div>
+  `).join("");
+}
+
+function eventIcon(kind) {
+  return {
+    budget: "¥",
+    max_tokens: "↓",
+    retry: "↻",
+    compact: "/",
+    chunk: "≡",
+    vision: "◐",
+    request: "✓",
+  }[kind] || "•";
+}
+
+function renderProtectionEvents() {
+  const events = insights?.events || [];
+  $("protectionCount").textContent = `${events.length} recent`;
+  const box = $("protectionEvents");
+  if (!box) return;
+
+  if (!events.length) {
+    box.innerHTML = '<div class="empty">No protection events yet. They will appear here after token budgeting, max_tokens reduction, retries, compact reminders, chunking, or vision preprocessing.</div>';
+    return;
+  }
+
+  box.innerHTML = events.slice().reverse().map((event) => `
+    <div class="event ${event.severity}">
+      <div class="event-icon">${escapeHtml(eventIcon(event.kind))}</div>
+      <div>
+        <div class="event-title">${escapeHtml(event.title)}</div>
+        <div class="event-summary">${escapeHtml(event.summary)}</div>
+        <div class="event-time">${new Date(event.timestamp).toLocaleString()}</div>
+      </div>
+    </div>
+  `).join("");
+}
+
+function renderInsights() {
+  renderHealth();
+  renderProtectionEvents();
 }
 
 function renderStatus() {
@@ -147,9 +217,11 @@ async function boot() {
   config = state.config;
   status = state.status;
   logs = state.logs || [];
+  insights = state.insights || null;
   fillForm();
   renderStatus();
   renderLogs();
+  renderInsights();
 
   api.onStatus((next) => {
     status = next;
@@ -158,6 +230,10 @@ async function boot() {
   api.onLog((entry) => {
     logs.push(entry);
     renderLogs();
+  });
+  api.onInsights((next) => {
+    insights = next;
+    renderInsights();
   });
   api.onStopped(() => {
     status = null;

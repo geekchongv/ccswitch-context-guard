@@ -5,6 +5,7 @@ import { startProxy, ProxyHandle } from "./proxy-runner.js";
 import { AppConfig } from "./types.js";
 import { loadConfig, saveConfig } from "./config.js";
 import { setBaseDirectory } from "./paths.js";
+import { buildHealthSummary, extractProtectionEvents } from "./product-insights.js";
 
 let mainWindow: BrowserWindow | null = null;
 let proxyHandle: ProxyHandle | null = null;
@@ -35,6 +36,22 @@ function sendToWindow(channel: string, payload: unknown): void {
   mainWindow.webContents.send(channel, payload);
 }
 
+function getInsights() {
+  const config = proxyHandle?.config ?? loadConfig();
+  const logs = proxyHandle?.logger.snapshot() ?? [];
+  return {
+    health: buildHealthSummary({
+      status: proxyHandle?.getStatus() ?? null,
+      config,
+    }),
+    events: extractProtectionEvents(logs, 16),
+  };
+}
+
+function sendInsights(): void {
+  sendToWindow("proxy:insights", getInsights());
+}
+
 async function stopProxy(reason: string): Promise<void> {
   if (!proxyHandle) {
     return;
@@ -48,10 +65,17 @@ async function stopProxy(reason: string): Promise<void> {
 async function startGuiProxy(): Promise<void> {
   proxyHandle = await startProxy({
     openDashboard: false,
-    onStatus: (status) => sendToWindow("proxy:status", status),
+    onStatus: (status) => {
+      sendToWindow("proxy:status", status);
+      sendInsights();
+    },
   });
-  proxyHandle.logger.onLog((entry) => sendToWindow("proxy:log", entry));
+  proxyHandle.logger.onLog((entry) => {
+    sendToWindow("proxy:log", entry);
+    sendInsights();
+  });
   sendToWindow("proxy:status", proxyHandle.getStatus());
+  sendInsights();
 }
 
 async function restartProxy(reason: string): Promise<void> {
@@ -93,6 +117,7 @@ ipcMain.handle("app:getState", () => ({
   status: proxyHandle?.getStatus() ?? null,
   config: proxyHandle?.config ?? loadConfig(),
   logs: proxyHandle?.logger.snapshot() ?? [],
+  insights: getInsights(),
 }));
 
 ipcMain.handle("app:saveConfig", async (_event, config: AppConfig) => {

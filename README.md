@@ -10,7 +10,7 @@ A transparent safety proxy that sits between Claude CLI / Claude Desktop and [cc
 
 <p align="center">
   <img alt="CI" src="https://img.shields.io/github/actions/workflow/status/geekchongv/ccswitch-context-guard/ci.yml?branch=main&label=CI&style=flat-square">
-  <img alt="version" src="https://img.shields.io/badge/version-v0.4.1-2ea44f?style=flat-square">
+  <img alt="version" src="https://img.shields.io/badge/version-v0.4.2-2ea44f?style=flat-square">
   <img alt="release" src="https://img.shields.io/github/v/release/geekchongv/ccswitch-context-guard?style=flat-square&color=blue">
   <img alt="platform" src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blue?style=flat-square">
   <img alt="language" src="https://img.shields.io/badge/lang-TypeScript-3178c6?style=flat-square">
@@ -31,6 +31,14 @@ A transparent safety proxy that sits between Claude CLI / Claude Desktop and [cc
 ---
 
 > ⚠️ This is an independent community project and is **not** affiliated with ccswitch, Anthropic, or Claude Code.
+
+## 📸 Dashboard Preview
+
+CCProxy Agent ships with a local web console for checking proxy status, editing guardrail settings, and watching live routing logs.
+
+| Running status | Configuration | Runtime logs |
+|---|---|---|
+| ![CCProxy Agent running status dashboard](docs/images/ccproxy-status.png) | ![CCProxy Agent configuration screen](docs/images/ccproxy-config.png) | ![CCProxy Agent runtime logs](docs/images/ccproxy-logs.png) |
 
 ## 💡 Why This Exists
 
@@ -105,7 +113,7 @@ curl http://127.0.0.1:15722/health
 Grab the latest release, drop in your `config.json`, and run:
 
 ```text
-CCProxy-Agent-v0.4.1.exe
+CCProxy-Agent-v0.4.2.exe
 ```
 
 ## ⚙️ How It Works
@@ -219,7 +227,7 @@ npm run package:exe   # build portable Windows exe → release/
 
 - 📐 [Design](docs/design.md)
 - ✅ [Validation](docs/validation.md)
-- 📦 [v0.4.1 Release Notes](docs/ccproxy-agent-v0.4.1-release.md)
+- 📦 [v0.4.2 Release Notes](docs/ccproxy-agent-v0.4.2-release.md)
 - 📦 [v0.4 Release Notes](docs/ccproxy-agent-v0.4-release.md)
 - 📦 [v0.3 Release Notes](docs/ccproxy-agent-v0.3-release.md)
 - 📦 [v0.2 Release Notes](docs/ccproxy-agent-v0.2-release.md)
