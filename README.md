@@ -1,99 +1,142 @@
-# CCProxy Agent
+<div align="center">
 
-CCProxy Agent is a local safety proxy for Claude Code / Claude CLI users running behind ccswitch.
+# 🛡️ CCProxy Agent
 
-It does not replace ccswitch. It sits above it and adds context-window guardrails:
+**The local guardrail that stops Claude Code from blowing past its context window.**
 
-- warns when a session is close to the compact threshold
-- automatically lowers `max_tokens` when input plus requested output would exceed the safe context budget
-- retries once after upstream context-limit `400` errors
-- temporarily points Claude CLI and Claude Desktop 3P gateway configs to the proxy on startup and restores the original config on shutdown
-- writes local Chinese logs for debugging
+A transparent safety proxy that sits between Claude CLI / Claude Desktop and [ccswitch](https://github.com/geekchongv/ccswitch-context-guard) — auto-managing token budgets, retrying context-limit errors, and routing multimodal inputs.
 
-Default topology:
+</div>
 
-```text
-Claude CLI / Claude Desktop -> CCProxy Agent :15722 -> ccswitch :15721 -> model provider
-```
+<p align="center">
+  <img alt="version" src="https://img.shields.io/badge/version-v0.4.1-2ea44f?style=flat-square">
+  <img alt="platform" src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blue?style=flat-square">
+  <img alt="language" src="https://img.shields.io/badge/lang-TypeScript-3178c6?style=flat-square">
+  <img alt="license" src="https://img.shields.io/badge/license-MIT-yellow?style=flat-square">
+  <img alt="status" src="https://img.shields.io/badge/status-active%20development-orange?style=flat-square">
+  <img alt="stars" src="https://img.shields.io/badge/⭐-welcome%20stars-ff69b4?style=flat-square">
+</p>
 
-> This is an independent community project and is not affiliated with ccswitch, Anthropic, or Claude Code.
+<p align="center">
+  <a href="#-quick-start">🚀 Quick Start</a> ·
+  <a href="#-features">✨ Features</a> ·
+  <a href="#-how-it-works">⚙️ How It Works</a> ·
+  <a href="#-configuration">🔧 Configuration</a> ·
+  <a href="#-中文说明">🇨🇳 中文说明</a>
+</p>
 
-## Why This Exists
+---
 
-Claude-style coding tools can fail when:
+> ⚠️ This is an independent community project and is **not** affiliated with ccswitch, Anthropic, or Claude Code.
 
-```text
-input_tokens + max_tokens > model_context_limit
-```
+## 💡 Why This Exists
 
-For example:
+Ever seen this error mid-coding session?
 
 ```text
 This model's maximum context length is 200000 tokens.
 However, you requested 64000 output tokens and your prompt contains at least 136001 input tokens.
 ```
 
-CCProxy Agent can parse this class of error and retry once with a safer output budget:
+That's a hard stop — your session dies, work is lost, and you restart. **CCProxy Agent fixes this automatically** by:
+
+- 📉 Lowering `max_tokens` *before* the request even leaves your machine
+- 🔁 Parsing the upstream `400` and retrying **once** with a safe budget
+- 🧮 The math is dead simple: `200000 − 8000 safety − 136001 input = 55999 max_tokens`
+
+It's not a replacement for ccswitch — it's the **crumple zone** above it.
+
+## 🏗️ Topology
 
 ```text
-200000 - 8000 safety margin - 136001 input = 55999 max_tokens
+                 ┌─────────────────┐     ┌──────────────┐     ┌────────────────┐
+  Claude CLI ──▶ │  CCProxy Agent  │ ──▶ │   ccswitch   │ ──▶ │  model provider │
+  Claude Desktop │  :15722 (guard) │     │  :15721      │     │  (GLM, Qwen...) │
+                 └─────────────────┘     └──────────────┘     └────────────────┘
+                  token budgeting ·       local switch         upstream LLM
+                  retry · vision ·
+                  compact reminder
 ```
 
-## Features
+The proxy intercepts `/v1/messages` and `/v1/chat/completions`, applies guardrails, then forwards to ccswitch. On startup it temporarily re-points Claude CLI / Claude Desktop configs at itself and **restores them cleanly on shutdown**.
 
-- `max_tokens` auto-reduction before forwarding to upstream.
-- One-shot retry after provider context-limit `400` responses.
-- `/compact` reminder appended to JSON responses when the compact threshold is reached.
-- Request budgeting for `/v1/messages` and `/v1/chat/completions`.
-- Fallback chunking for requests that remain too large.
-- Optional Claude CLI settings patching.
-- Optional Claude Desktop 3P config patching.
-- Multimodal image summarization for text-only downstream models.
-- Automatic listen-port fallback when the configured port is already busy.
-- Built-in local dashboard with status and runtime logs.
-- Local logs and session snapshots.
-- Windows exe packaging support.
+## ✨ Features
 
-## Current Limits
+| | Feature | What it does |
+|---|---|---|
+| 🧠 | **Auto token budgeting** | Reduces `max_tokens` before forwarding so `input + output` never exceeds the context limit |
+| 🔁 | **One-shot retry** | Parses upstream context-limit `400` errors and retries with a safer output budget |
+| 🪧 | **Compact reminder** | Appends a `/compact` hint to responses when the session nears the threshold |
+| 🖼️ | **Vision summarization** | Routes Claude Desktop images through vision models, injects `[VISION SUMMARY]` for text-only downstreams like GLM-5.2 |
+| 🧩 | **Fallback chunking** | Splits requests that remain too large after budgeting |
+| 🔌 | **Claude CLI patching** | Temporarily redirects Claude CLI settings → proxy, restores on exit |
+| 🖥️ | **Claude Desktop 3P patching** | Rewrites Desktop gateway config under `%LOCALAPPDATA%/Claude-3p/configLibrary` |
+| 🔌 | **Port fallback** | Auto-jumps to the next free port (`15722 → 15723 → …`) if busy |
+| 🔍 | **Upstream auto-discovery** | Finds a reachable local ccswitch when the configured upstream is down |
+| 📊 | **Built-in dashboard** | Status, routing, process info & live logs at the active proxy URL |
+| 🪵 | **Local Chinese logs** | Human-readable `Token预算评估` / `已自动降低max_tokens` style messages |
+| 📦 | **Windows exe packaging** | Ship a portable `CCProxy-Agent.exe` |
 
-- Token counting before upstream is heuristic, not provider-native.
-- `/compact` is a reminder by default, not a hidden Claude CLI command injection.
-- Multimodal routing exists as a planned path but is disabled by default.
-- Chunking is a fallback, not a full long-task planning engine.
-- The project is currently tested primarily on Windows.
-- Claude Desktop reads 3P config at launch, so restart Claude Desktop after starting the proxy.
-- Vision API keys should be provided via environment variables, not committed into `config.json`.
-
-## Quick Start From Source
+## 🚀 Quick Start
 
 ```bash
+git clone https://github.com/geekchongv/ccswitch-context-guard.git
+cd ccswitch-context-guard
 npm install
 cp config.example.json config.json
 npm run dev
 ```
 
-Default ports:
+That's it. The proxy starts on `http://127.0.0.1:15722` and the dashboard opens automatically.
 
-```text
-CCProxy Agent: http://127.0.0.1:15722
-ccswitch:      http://127.0.0.1:15721
-```
-
-If `15722` is already in use, CCProxy Agent automatically tries the next ports and patches Claude to the port it actually opened. The dashboard is available at the active listen URL, for example `http://127.0.0.1:15723/`.
-
-Use the dashboard Stop button to close the proxy cleanly. It restores patched Claude settings before the process exits.
-
-Health check:
+**Health check:**
 
 ```bash
 curl http://127.0.0.1:15722/health
 ```
 
-## Configuration
+> 💡 Use the dashboard **Stop** button to close cleanly — it restores your patched Claude settings before exit.
 
-Copy `config.example.json` to `config.json`.
+### Prefer a packaged exe?
 
-Important defaults:
+Grab the latest release, drop in your `config.json`, and run:
+
+```text
+CCProxy-Agent-v0.4.1.exe
+```
+
+## ⚙️ How It Works
+
+### Token budgeting (before the request leaves)
+
+```text
+   safe budget = hardLimit − safetyMargin
+   max_tokens  = safe budget − estimated_input_tokens
+
+   e.g.  200000 − 8000 − 136001  =  55999   ✅ never overflows
+```
+
+### Context-limit retry (after a 400)
+
+```text
+   upstream ──400──▶ parse "200000 ... 136001 input ... 64000 output"
+                   ──▶ recompute max_tokens
+                   ──▶ retry once ──▶ 200 OK
+```
+
+### Vision routing (Claude Desktop → text-only model)
+
+```text
+   image blocks ──▶ vision model (qwen3-vl) ──▶ [VISION SUMMARY]
+                 ──▶ strip original images ──▶ forward to GLM-5.2
+```
+
+## 🔧 Configuration
+
+Copy `config.example.json` → `config.json`. Key sections:
+
+<details>
+<summary><b>🎫 Token policy</b></summary>
 
 ```json
 {
@@ -109,27 +152,16 @@ Important defaults:
 }
 ```
 
-UI defaults:
+</details>
 
-```json
-{
-  "ui": {
-    "enabled": true,
-    "openOnStart": true
-  }
-}
-```
-
-Vision defaults:
+<details>
+<summary><b>🖼️ Vision</b></summary>
 
 ```json
 {
   "vision": {
     "enabled": true,
-    "models": [
-      "qwen3-vl-30b-a3b-instruct",
-      "Qwen3.6-35B-A3B"
-    ],
+    "models": ["qwen3-vl-30b-a3b-instruct", "Qwen3.6-35B-A3B"],
     "compareModels": true,
     "apiKeyEnv": "CCPROXY_VISION_API_KEY",
     "stripImagesAfterSummary": true
@@ -137,93 +169,126 @@ Vision defaults:
 }
 ```
 
-Set the vision API key:
+Set the key via env var (don't commit it):
 
 ```powershell
 [Environment]::SetEnvironmentVariable("CCPROXY_VISION_API_KEY", "your-token", "User")
 ```
 
-When the downstream model does not support images, CCProxy Agent calls the vision models, injects a `[VISION SUMMARY]`, and removes the original image blocks before forwarding to ccswitch.
+</details>
 
-When `claudeConfigPatch.enabled` is `true`, CCProxy Agent temporarily modifies Claude CLI settings so requests go through `http://127.0.0.1:15722`. On normal shutdown it restores the previous value.
+<details>
+<summary><b>🖥️ Claude Desktop 3P patching</b></summary>
 
-When `claudeDesktopConfigPatch.enabled` is `true`, CCProxy Agent looks for the applied Claude Desktop 3P config under:
-
-```text
-%LOCALAPPDATA%/Claude-3p/configLibrary
-```
-
-If ccswitch configured Desktop with:
+When `claudeDesktopConfigPatch.enabled` is `true`, the proxy rewrites the ccswitch Desktop gateway path:
 
 ```text
-http://127.0.0.1:15721/claude-desktop
+  http://127.0.0.1:15721/claude-desktop   ──▶   http://127.0.0.1:15722/claude-desktop
 ```
 
-the proxy temporarily rewrites it to:
+> ⚠️ Fully quit and reopen Claude Desktop after starting the proxy — it reads 3P config only at launch.
 
-```text
-http://127.0.0.1:15722/claude-desktop
-```
+</details>
 
-Fully quit and reopen Claude Desktop after starting CCProxy Agent.
+## 📜 Logs
 
-## Logs
+Written to `logs/ccproxy-agent.log`. Useful Chinese log lines:
 
-Logs are written to:
+| Message | Meaning |
+|---|---|
+| `Token预算评估` | Estimated input / output / total tokens |
+| `已自动降低max_tokens…` | Output budget reduced before sending upstream |
+| `上游返回上下文超限错误…` | Upstream returned a context-limit error, parsed |
+| `已降低max_tokens并自动重试一次` | Retried once with a safer budget |
+| `已触发compact提醒模式` | Response will include a `/compact` reminder |
+| `已触发分块执行` | Chunking fallback started |
 
-```text
-logs/ccproxy-agent.log
-```
-
-Useful Chinese log messages:
-
-- `Token预算评估`: estimated input/output/total tokens.
-- `已自动降低max_tokens，避免总token撞上上下文硬上限`: output budget was reduced before sending upstream.
-- `上游返回上下文超限错误，已解析错误详情`: upstream returned a context-limit error and the proxy parsed it.
-- `已降低max_tokens并自动重试一次`: the proxy retried once with safer output tokens.
-- `已触发compact提醒模式`: the response will include a `/compact` reminder.
-- `已触发分块执行`: chunking fallback started.
-
-## Development
+## 🛠️ Development
 
 ```bash
-npm run check
-npm test
-npm run build
+npm run check      # typecheck
+npm test           # run test suite
+npm run build      # compile TS → dist
+npm run package:exe   # build portable Windows exe → release/
 ```
 
-Package a Windows exe:
+## 📚 Documentation
+
+- 📐 [Design](docs/design.md)
+- ✅ [Validation](docs/validation.md)
+- 📦 [v0.4.1 Release Notes](docs/ccproxy-agent-v0.4.1-release.md)
+- 📦 [v0.4 Release Notes](docs/ccproxy-agent-v0.4-release.md)
+- 📦 [v0.3 Release Notes](docs/ccproxy-agent-v0.3-release.md)
+- 📦 [v0.2 Release Notes](docs/ccproxy-agent-v0.2-release.md)
+- 📝 [Full Changelog](CHANGELOG.md)
+
+## 🔒 Security & Privacy
+
+CCProxy Agent is a **local** proxy — it can see prompts/responses passing through it, but by default everything stays on your machine.
+
+- ✅ Logs and session snapshots are local-only
+- ✅ Vision API keys come from env vars, never `config.json`
+- 🚫 **Never commit** your `config.json`, `runtime/`, `logs/`, or personal builds
+
+See [SECURITY.md](SECURITY.md) for details.
+
+## ⚠️ Current Limits
+
+- Token counting before upstream is **heuristic**, not provider-native
+- `/compact` is a reminder by default, not hidden Claude CLI command injection
+- Multimodal routing is a planned path, disabled by default beyond summarization
+- Chunking is a fallback, not a full long-task planning engine
+- Primarily tested on **Windows**
+
+---
+
+<div align="center">
+
+## 🇨🇳 中文说明
+
+**CCProxy Agent** 是一个放在 Claude CLI / Claude Desktop 和 ccswitch 中间的本地护栏代理。
+
+它不是 ccswitch 的替代品，而是 ccswitch 上层的**防撞护栏**，主要解决这些问题：
+
+- 📉 快到上下文上限时提醒你执行 `/compact`
+- 🧠 `input_tokens + max_tokens` 超过模型上下文时，**自动降低** `max_tokens`
+- 🔁 上游返回 context limit `400` 时，解析错误并**自动重试一次**
+- 🖥️ 临时接管 Claude Desktop 3P 网关配置
+- 🖼️ Claude Desktop 发图后调用视觉模型生成摘要，再转给不支持图片的 GLM-5.2
+
+**默认拓扑：**
+
+```text
+Claude CLI / Claude Desktop  ──▶  CCProxy Agent :15722  ──▶  ccswitch :15721  ──▶  模型
+                                  (自动降低 / 重试 / 摘要 / 提醒)
+```
+
+**快速开始：**
 
 ```bash
-npm run package:exe
+npm install
+cp config.example.json config.json
+npm run dev
 ```
 
-The generated exe is written to `release/ccproxy-agent.exe`.
+**核心日志：**
 
-## Documentation
+- `Token预算评估`：估算的输入 / 输出 / 总 token
+- `已自动降低max_tokens，避免总token撞上上下文硬上限`
+- `上游返回上下文超限错误，已解析错误详情`
+- `已降低max_tokens并自动重试一次`
+- `已触发compact提醒模式`
 
-- [Design](docs/design.md)
-- [Validation](docs/validation.md)
-- [v0.2 Release Notes](docs/ccproxy-agent-v0.2-release.md)
-- [v0.3 Release Notes](docs/ccproxy-agent-v0.3-release.md)
-- [v0.4 Release Notes](docs/ccproxy-agent-v0.4-release.md)
+</div>
 
-## Security And Privacy
+---
 
-CCProxy Agent is a local proxy. It can see the prompts and responses passing through it. By default, logs and session records stay on your local machine.
+<div align="center">
 
-Do not commit your `config.json`, runtime sessions, logs, or packaged personal builds.
+**Made with 🛡️ for the Claude Code + ccswitch community.**
 
-## 中文简介
+If this saved your session, a ⭐ on GitHub means a lot.
 
-CCProxy Agent 是一个放在 Claude CLI / Claude Desktop 和 ccswitch 中间的本地护栏代理。
+[Report a bug](https://github.com/geekchongv/ccswitch-context-guard/issues) · [Request a feature](https://github.com/geekchongv/ccswitch-context-guard/issues) · [View releases](https://github.com/geekchongv/ccswitch-context-guard/releases)
 
-它主要解决三个问题：
-
-- 快到上下文上限时提醒你执行 `/compact`。
-- `input_tokens + max_tokens` 超过模型上下文时，自动降低 `max_tokens`。
-- 上游返回 context limit `400` 时，解析错误并自动重试一次。
-- 支持临时接管 Claude Desktop 3P 网关配置。
-- 支持 Claude Desktop 发图后由代理调用视觉模型生成摘要，再转给不支持图片的 GLM-5.2。
-
-它不是 ccswitch 的替代品，而是 ccswitch 上层的防撞护栏。
+</div>
