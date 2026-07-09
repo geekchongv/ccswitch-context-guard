@@ -24,6 +24,7 @@ A transparent safety proxy that sits between Claude CLI / Claude Desktop and [cc
   <a href="#-features">✨ Features</a> ·
   <a href="#-how-it-works">⚙️ How It Works</a> ·
   <a href="#-configuration">🔧 Configuration</a> ·
+  <a href="CONTRIBUTING.md">🤝 Contributing</a> ·
   <a href="#-中文说明">🇨🇳 中文说明</a>
 </p>
 
@@ -291,6 +292,6 @@ npm run dev
 
 If this saved your session, a ⭐ on GitHub means a lot.
 
-[Report a bug](https://github.com/geekchongv/ccswitch-context-guard/issues) · [Request a feature](https://github.com/geekchongv/ccswitch-context-guard/issues) · [View releases](https://github.com/geekchongv/ccswitch-context-guard/releases)
+[Report a bug](https://github.com/geekchongv/ccswitch-context-guard/issues) · [Request a feature](https://github.com/geekchongv/ccswitch-context-guard/issues) · [Contributing](CONTRIBUTING.md) · [View releases](https://github.com/geekchongv/ccswitch-context-guard/releases)
 
 </div>
