@@ -7,6 +7,7 @@ import { AppConfig, ChatCompletionRequest } from "./types.js";
 import { Logger } from "./logger.js";
 import { SessionStore } from "./session-store.js";
 import { Orchestrator } from "./orchestrator.js";
+import { estimateRequestTokens } from "./token-estimator.js";
 
 async function readJson(request: http.IncomingMessage): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = [];
@@ -347,6 +348,77 @@ test("server filters hop-by-hop headers before forwarding orchestrated Desktop r
     await once(server, "close");
   } finally {
     proxyServer.close();
+    upstream.close();
+    await once(upstream, "close");
+  }
+});
+
+test("orchestrator chunks an oversized request and every chunk stays under the hard cap", async () => {
+  mkdirSync("test-output/logs", { recursive: true });
+  mkdirSync("test-output/runtime/sessions", { recursive: true });
+
+  // 用很小的 tokenPolicy 强制触发 chunk_required。
+  const hardLimit = 4000;
+  const safetyMargin = 200;
+  const responseReserve = 100;
+  const chunkTarget = 2000;
+  const hardCap = hardLimit - safetyMargin - responseReserve; // 3700
+
+  const receivedChunks: ChatCompletionRequest[] = [];
+  const upstream = http.createServer(async (request, response) => {
+    const body = (await readJson(request)) as ChatCompletionRequest;
+    receivedChunks.push(body);
+    response.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+    response.end(JSON.stringify({ content: [{ type: "text", text: "chunk ok" }] }));
+  });
+
+  upstream.listen(0, "127.0.0.1");
+  await once(upstream, "listening");
+  const address = upstream.address();
+  assert.ok(address && typeof address === "object");
+
+  try {
+    const base = buildTestConfig(address.port);
+    const config: AppConfig = {
+      ...base,
+      tokenPolicy: {
+        ...base.tokenPolicy,
+        compactThreshold: 1500,
+        hardLimit,
+        safetyMargin,
+        responseReserve,
+        chunkTarget,
+      },
+    };
+    const orchestrator = new Orchestrator(
+      config,
+      new Logger(config.logging),
+      new SessionStore(config.runtime.directory),
+    );
+    // 样本重复到 tokenx 计数远超 hardLimit,触发分块执行。
+    const sample = "The proxy estimates message size and warns before the limit is reached. ";
+    const request: ChatCompletionRequest = {
+      messages: [{ role: "user", content: sample.repeat(1000) }],
+      max_tokens: 100,
+    };
+
+    const response = await orchestrator.handle("/v1/messages", request);
+    assert.equal(response.status, 200);
+
+    // receivedChunks 包含分块请求 + 最后的合成请求;合成请求把所有块输出拼在一起,不在硬上限约束内,排除。
+    const chunkRequests = receivedChunks.filter(
+      (c) => typeof c.messages?.[0]?.content === "string" && /Process this chunk|Continue processing/.test(c.messages[0].content),
+    );
+    assert.ok(chunkRequests.length > 1, `应分多块执行,实际 ${chunkRequests.length} 块`);
+
+    for (const [i, chunk] of chunkRequests.entries()) {
+      const inputTokens = estimateRequestTokens(chunk, responseReserve).inputTokens;
+      assert.ok(
+        inputTokens <= hardCap,
+        `第 ${i + 1} 块 inputTokens=${inputTokens} 超过硬上限 ${hardCap}`,
+      );
+    }
+  } finally {
     upstream.close();
     await once(upstream, "close");
   }

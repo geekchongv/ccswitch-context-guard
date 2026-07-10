@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { AppConfig, ChatCompletionRequest, OrchestrationRecord } from "./types.js";
 import { Logger } from "./logger.js";
 import { SessionStore } from "./session-store.js";
-import { assessBudget } from "./token-estimator.js";
+import { assessBudget, estimateRequestTokens } from "./token-estimator.js";
 import { compactRequest } from "./compactor.js";
 import { enrichRequestWithVision, hasImageInput } from "./modality-router.js";
 import { buildChunkPlan, buildSynthesisRequest } from "./chunking.js";
@@ -276,16 +276,48 @@ export class Orchestrator {
         totalTokens: budget.estimate.totalTokens,
         chunkTarget: this.config.tokenPolicy.chunkTarget,
       });
-      const chunkPlan = buildChunkPlan(workingRequest, this.config.tokenPolicy.chunkTarget);
+      const chunkHardCap =
+        this.config.tokenPolicy.hardLimit -
+        this.config.tokenPolicy.safetyMargin -
+        this.config.tokenPolicy.responseReserve;
+      const chunkPlan = buildChunkPlan(
+        workingRequest,
+        this.config.tokenPolicy.chunkTarget,
+        chunkHardCap,
+      );
       const chunkOutputs: string[] = [];
 
       this.logger.debug("分块计划已生成", {
         requestId,
         routePath,
         chunkCount: chunkPlan.length,
+        chunkHardCap,
       });
 
       for (const [index, chunkRequest] of chunkPlan.entries()) {
+        const chunkInputTokens = estimateRequestTokens(
+          chunkRequest,
+          this.config.tokenPolicy.responseReserve,
+        ).inputTokens;
+        if (chunkInputTokens > chunkHardCap) {
+          // 拆分器应保证不会发生;此日志为回归哨兵,一旦出现说明拆分逻辑有缺陷。
+          this.logger.warn("分块估算超出硬上限", {
+            requestId,
+            routePath,
+            chunkIndex: index + 1,
+            chunkInputTokens,
+            chunkHardCap,
+          });
+        } else {
+          this.logger.debug("分块估算大小", {
+            requestId,
+            routePath,
+            chunkIndex: index + 1,
+            chunkCount: chunkPlan.length,
+            chunkInputTokens,
+            chunkHardCap,
+          });
+        }
         const chunkResponse = await this.upstreamClient.postJson(routePath, chunkRequest, upstreamHeaders);
         if (!chunkResponse.ok) {
           const { replayResponse, bodyPreview } = await captureUpstreamError(chunkResponse);

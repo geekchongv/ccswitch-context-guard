@@ -1,36 +1,9 @@
-import { BudgetAssessment, ChatCompletionRequest, ChatMessage, ChatMessagePart, TokenEstimate } from "./types.js";
-
-function estimateStringTokens(input: string): number {
-  if (!input) {
-    return 0;
-  }
-
-  return Math.ceil(input.length / 3.0);
-}
-
-function extractTextFromPart(part: ChatMessagePart): string {
-  if ("text" in part && typeof part.text === "string") {
-    return part.text;
-  }
-
-  if ("image_url" in part || "url" in part) {
-    return "[image]";
-  }
-
-  return JSON.stringify(part);
-}
-
-function messageToText(message: ChatMessage): string {
-  if (typeof message.content === "string") {
-    return `${message.role}: ${message.content}`;
-  }
-
-  return `${message.role}: ${message.content.map(extractTextFromPart).join("\n")}`;
-}
+import { BudgetAssessment, ChatCompletionRequest, TokenEstimate } from "./types.js";
+import { countMessageTokens } from "./token-counter.js";
 
 export function estimateRequestTokens(request: ChatCompletionRequest, responseReserve: number): TokenEstimate {
   const messages = request.messages ?? [];
-  const messageTokens = messages.reduce((sum, message) => sum + estimateStringTokens(messageToText(message)), 0);
+  const messageTokens = messages.reduce((sum, message) => sum + countMessageTokens(message), 0);
   const wrapperTokens = 250 + messages.length * 12;
   const expectedOutputTokens =
     request.max_completion_tokens ?? request.max_tokens ?? responseReserve;

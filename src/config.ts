@@ -55,7 +55,7 @@ const defaultConfig: AppConfig = {
   },
   ui: {
     enabled: true,
-    openOnStart: true,
+    openOnStart: false,
   },
   claudeConfigPatch: {
     enabled: true,

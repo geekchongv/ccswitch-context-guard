@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.4.4
+
+- Changed the default UI startup behavior: the local dashboard remains available, but `ui.openOnStart` now defaults to `false` so CLI/script startup no longer opens a browser tab automatically.
+- Fixed the token-chunking bug where a single oversized message became an uncapped chunk that exceeded the model's hard context limit, causing upstream HTTP 400 ("196001 input tokens"). Chunking now splits oversized messages on paragraph, sentence, then token boundaries, with a hard cap that every chunk must stay under.
+- Unified token counting on `tokenx` (Chinese-aware, ~96% accurate), replacing the inconsistent `length/3.0` and `length/3.5` heuristics used by the estimator and chunker. Budget decisions and chunk sizes are now based on the same accurate counter.
+- Fixed base64 image inflation: image parts are now counted as a bounded `[image]` placeholder (~1 token) instead of serializing their base64 payload, which previously inflated a 100 KB image to ~33k tokens.
+- Added per-chunk estimated-size logging in the orchestrator with a regression sentinel that warns if any chunk exceeds the hard cap.
+- Added `src/token-counter.test.ts` and `src/chunking.test.ts`, including a `196001` regression test asserting no chunk ever crosses the hard cap.
+
 ## v0.4.3
 
 - Reduced log noise: demoted routine startup and per-request diagnostic logs to `debug`, reserving `info` for decisions a user acts on (request completed, vision preprocessing, compact triggered, failures).

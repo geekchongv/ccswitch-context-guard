@@ -88,7 +88,7 @@ cp config.example.json config.json
 npm run dev
 ```
 
-The proxy starts on `http://127.0.0.1:15722` and the dashboard opens automatically.
+The proxy starts on `http://127.0.0.1:15722`. The optional dashboard is available at that URL, but it does not open a browser automatically by default.
 
 ### Keep your fork in sync
 

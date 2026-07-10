@@ -84,7 +84,7 @@ The proxy intercepts `/v1/messages` and `/v1/chat/completions`, applies guardrai
 | 🖥️ | **Claude Desktop 3P patching** | Rewrites Desktop gateway config under `%LOCALAPPDATA%/Claude-3p/configLibrary` |
 | 🔌 | **Port fallback** | Auto-jumps to the next free port (`15722 → 15723 → …`) if busy |
 | 🔍 | **Upstream auto-discovery** | Finds a reachable local ccswitch when the configured upstream is down |
-| 📊 | **Built-in dashboard** | Status, routing, process info & live logs at the active proxy URL |
+| 📊 | **Built-in dashboard** | Optional status, routing, process info & live logs at the active proxy URL |
 | 🪵 | **Local Chinese logs** | Human-readable `Token预算评估` / `已自动降低max_tokens` style messages |
 | 📦 | **Windows exe packaging** | Ship a portable `CCProxy-Agent.exe` |
 
@@ -98,7 +98,7 @@ cp config.example.json config.json
 npm run dev
 ```
 
-That's it. The proxy starts on `http://127.0.0.1:15722` and the dashboard opens automatically.
+That's it. The proxy starts on `http://127.0.0.1:15722`. The local dashboard remains available at that URL, but it no longer opens a browser automatically by default.
 
 **Health check:**
 
@@ -106,7 +106,7 @@ That's it. The proxy starts on `http://127.0.0.1:15722` and the dashboard opens 
 curl http://127.0.0.1:15722/health
 ```
 
-> 💡 Use the dashboard **Stop** button to close cleanly — it restores your patched Claude settings before exit.
+> 💡 If you open the optional dashboard manually, its **Stop** button closes cleanly and restores patched Claude settings before exit.
 
 ### Prefer a packaged exe?
 
