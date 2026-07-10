@@ -29,11 +29,7 @@ A transparent safety proxy that sits between Claude CLI / Claude Desktop and [cc
 </p>
 
 <p align="center">
-  <img width="100%" alt="CCProxy Agent makes Claude CLI and Claude Desktop feel closer to native Claude on private model stacks" src="docs/images/ccproxy-agent-hero.png">
-</p>
-
-<p align="center">
-  <img width="100%" alt="Four user stories solved by CCProxy Agent: long sessions, compact reminders, chunking, and image summaries" src="docs/images/ccproxy-agent-user-stories.png">
+  <img width="100%" alt="CCProxy Agent prevents context-window crashes on private model stacks" src="docs/images/ccproxy-agent-hero-v2.png">
 </p>
 
 ---
@@ -44,9 +40,9 @@ A transparent safety proxy that sits between Claude CLI / Claude Desktop and [cc
 
 CCProxy Agent ships with a local web console for checking proxy status, editing guardrail settings, and watching live routing logs.
 
-| Running status | Configuration | Runtime logs |
-|---|---|---|
-| ![CCProxy Agent running status dashboard](docs/images/ccproxy-status.png) | ![CCProxy Agent configuration screen](docs/images/ccproxy-config.png) | ![CCProxy Agent runtime logs](docs/images/ccproxy-logs.png) |
+<p align="center">
+  <img width="100%" alt="CCProxy Agent dashboard showing runtime status, guardrail settings, and live routing logs" src="docs/images/ccproxy-dashboard-showcase-v2.png">
+</p>
 
 ## 💡 Why This Exists
 
