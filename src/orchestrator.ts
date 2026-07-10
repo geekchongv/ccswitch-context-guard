@@ -25,6 +25,8 @@ interface ContextLimitError {
   message: string;
 }
 
+const PROVIDER_CONTEXT_RETRY_TOKEN_BUFFER = 256;
+
 function extractAssistantText(payload: Record<string, unknown>): string {
   if (typeof payload.content === "string") {
     return payload.content;
@@ -527,7 +529,9 @@ export class Orchestrator {
       const safetyAvailableOutputTokens = Math.floor(
         contextError.contextLimit - this.config.tokenPolicy.safetyMargin - contextError.inputTokens,
       );
-      const absoluteAvailableOutputTokens = Math.floor(contextError.contextLimit - contextError.inputTokens - 1);
+      const absoluteAvailableOutputTokens = Math.floor(
+        contextError.contextLimit - contextError.inputTokens - PROVIDER_CONTEXT_RETRY_TOKEN_BUFFER,
+      );
       const adjustedMaxTokens =
         safetyAvailableOutputTokens >= this.config.tokenPolicy.minOutputTokens
           ? safetyAvailableOutputTokens

@@ -182,7 +182,7 @@ test("orchestrator retries with provider-reported token counts when local estima
 
     assert.equal(response.status, 200);
     assert.equal(payload.content[0]?.text, "provider count retry ok");
-    assert.deepEqual(receivedMaxTokens, [4096, 4094]);
+    assert.deepEqual(receivedMaxTokens, [4096, 3839]);
   } finally {
     upstream.close();
     await once(upstream, "close");
