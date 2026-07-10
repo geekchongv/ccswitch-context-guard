@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildChunkPlan } from "./chunking.js";
+import { buildChunkPlan, buildSynthesisRequest } from "./chunking.js";
 import { estimateRequestTokens } from "./token-estimator.js";
 import { ChatCompletionRequest } from "./types.js";
 
@@ -145,6 +145,42 @@ test("buildChunkPlan keeps the system preamble and caps max_tokens", () => {
     assert.equal(chunk.max_tokens, 4000);
     assert.equal(chunk.stream, false);
   }
+});
+
+test("buildSynthesisRequest does not re-inject the full oversized original messages", () => {
+  const hugeOriginal = sample().repeat(12_000);
+  const request: ChatCompletionRequest = {
+    messages: [
+      { role: "system", content: "Keep the answer concise." },
+      { role: "user", content: hugeOriginal },
+    ],
+    max_tokens: 64_000,
+  };
+
+  const synthesis = buildSynthesisRequest(request, ["chunk result"], HARD_CAP);
+  const inputTokens = estimateRequestTokens(synthesis, 12_000).inputTokens;
+  const userContent = String(synthesis.messages?.[1]?.content ?? "");
+
+  assert.ok(inputTokens <= HARD_CAP, `synthesis inputTokens=${inputTokens} 超过硬上限 ${HARD_CAP}`);
+  assert.equal(synthesis.max_tokens, 4000);
+  assert.ok(userContent.includes("Original task preview:"));
+  assert.ok(userContent.includes("[truncated]"));
+  assert.ok(!userContent.includes(JSON.stringify(request.messages ?? [])), "不应完整塞回原始 messages JSON");
+});
+
+test("buildSynthesisRequest truncates excessive chunk outputs under the hard cap", () => {
+  const request: ChatCompletionRequest = {
+    messages: [{ role: "user", content: "Summarize all chunks." }],
+    max_tokens: 4000,
+  };
+  const chunkOutputs = Array.from({ length: 80 }, (_, index) => `chunk ${index}: ${sample().repeat(400)}`);
+
+  const synthesis = buildSynthesisRequest(request, chunkOutputs, HARD_CAP);
+  const inputTokens = estimateRequestTokens(synthesis, 12_000).inputTokens;
+  const userContent = String(synthesis.messages?.[1]?.content ?? "");
+
+  assert.ok(inputTokens <= HARD_CAP, `synthesis inputTokens=${inputTokens} 超过硬上限 ${HARD_CAP}`);
+  assert.ok(userContent.includes("[truncated]"));
 });
 
 function sample(): string {

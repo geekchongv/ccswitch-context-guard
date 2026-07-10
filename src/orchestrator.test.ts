@@ -405,7 +405,7 @@ test("orchestrator chunks an oversized request and every chunk stays under the h
     const response = await orchestrator.handle("/v1/messages", request);
     assert.equal(response.status, 200);
 
-    // receivedChunks 包含分块请求 + 最后的合成请求;合成请求把所有块输出拼在一起,不在硬上限约束内,排除。
+    // receivedChunks 包含分块请求 + 最后的合成请求;两者都必须在硬上限内。
     const chunkRequests = receivedChunks.filter(
       (c) => typeof c.messages?.[0]?.content === "string" && /Process this chunk|Continue processing/.test(c.messages[0].content),
     );
@@ -418,6 +418,16 @@ test("orchestrator chunks an oversized request and every chunk stays under the h
         `第 ${i + 1} 块 inputTokens=${inputTokens} 超过硬上限 ${hardCap}`,
       );
     }
+
+    const synthesisRequest = receivedChunks.find(
+      (c) => typeof c.messages?.[0]?.content === "string" && /Synthesize the chunk results/.test(c.messages[0].content),
+    );
+    assert.ok(synthesisRequest, "应发送最终合成请求");
+    const synthesisInputTokens = estimateRequestTokens(synthesisRequest, responseReserve).inputTokens;
+    assert.ok(
+      synthesisInputTokens <= hardCap,
+      `合成请求 inputTokens=${synthesisInputTokens} 超过硬上限 ${hardCap}`,
+    );
   } finally {
     upstream.close();
     await once(upstream, "close");

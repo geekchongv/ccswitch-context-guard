@@ -8,6 +8,7 @@ const IMAGE_PLACEHOLDER = "[image]";
 /** buildChunkPlan 给每块加的 system preamble 文本,打包时需为其预留 token 余量。 */
 const CHUNK_PREAMBLE_FIRST = "Process this chunk and preserve all actionable constraints for later synthesis.";
 const CHUNK_PREAMBLE_LATER = "Continue processing this chunk. Preserve constraints and new findings for final synthesis.";
+const SYNTHESIS_PREAMBLE = "Synthesize the chunk results into one final answer. Preserve all constraints and avoid contradictions.";
 /** 取两者中较大的 token 数作为打包预留(保守)。 */
 const PREAMBLE_RESERVE = Math.max(countTextTokens(CHUNK_PREAMBLE_FIRST), countTextTokens(CHUNK_PREAMBLE_LATER));
 /**
@@ -15,6 +16,8 @@ const PREAMBLE_RESERVE = Math.max(countTextTokens(CHUNK_PREAMBLE_FIRST), countTe
  * 打包时按每块最多约 4 条消息保守预留,避免 wrapper 把块顶过 hardCap。
  */
 const WRAPPER_RESERVE = 250 + 4 * 12;
+const SYNTHESIS_MAX_OUTPUT_TOKENS = 4000;
+const ORIGINAL_PREVIEW_TOKENS = 2000;
 
 /** 判断一个 part 是否是图片块(判定与 token-counter / modality-router 保持一致)。 */
 function isImagePart(part: ChatMessagePart): boolean {
@@ -29,6 +32,49 @@ function isImagePart(part: ChatMessagePart): boolean {
     return true;
   }
   return false;
+}
+
+function truncateByTokens(text: string, maxTokens: number): string {
+  if (countTextTokens(text) <= maxTokens) {
+    return text;
+  }
+  const suffix = "\n[truncated]";
+  const suffixTokens = countTextTokens(suffix);
+  const sliceBudget = Math.max(1, maxTokens - suffixTokens);
+  return `${sliceByTokens(text, 0, sliceBudget)}${suffix}`;
+}
+
+function partToPreviewText(part: ChatMessagePart): string {
+  if ("text" in part && typeof part.text === "string") {
+    return part.text;
+  }
+  if (isImagePart(part)) {
+    return IMAGE_PLACEHOLDER;
+  }
+  return JSON.stringify(part).slice(0, 200);
+}
+
+function messageToPreviewText(message: ChatMessage): string {
+  if (typeof message.content === "string") {
+    return message.content;
+  }
+  return message.content.map(partToPreviewText).join("\n");
+}
+
+function buildOriginalTaskPreview(messages: ChatMessage[]): string {
+  const systemMessages = messages
+    .filter((message) => message.role === "system")
+    .map(messageToPreviewText)
+    .filter(Boolean);
+  const lastUserMessage = [...messages].reverse().find((message) => message.role === "user");
+  const preview = [
+    systemMessages.length > 0 ? `System constraints:\n${systemMessages.join("\n\n")}` : "",
+    lastUserMessage ? `Latest user request:\n${messageToPreviewText(lastUserMessage)}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
+  return truncateByTokens(preview || "No original task preview available.", ORIGINAL_PREVIEW_TOKENS);
 }
 
 /**
@@ -272,25 +318,36 @@ export function buildChunkPlan(
 export function buildSynthesisRequest(
   originalRequest: ChatCompletionRequest,
   chunkOutputs: string[],
+  hardCap = 120_000,
 ): ChatCompletionRequest {
+  const synthesisInputBudget = Math.max(
+    1000,
+    hardCap - countTextTokens(SYNTHESIS_PREAMBLE) - WRAPPER_RESERVE,
+  );
+  const synthesisBody = [
+    "Original task preview:",
+    buildOriginalTaskPreview(originalRequest.messages ?? []),
+    "",
+    "Chunk outputs:",
+    ...chunkOutputs.map((output, index) => `Chunk ${index + 1}:\n${output}`),
+  ].join("\n");
+
   return {
     ...originalRequest,
     stream: false,
+    max_tokens: Math.min(originalRequest.max_tokens ?? SYNTHESIS_MAX_OUTPUT_TOKENS, SYNTHESIS_MAX_OUTPUT_TOKENS),
+    max_completion_tokens:
+      typeof originalRequest.max_completion_tokens === "number"
+        ? Math.min(originalRequest.max_completion_tokens, SYNTHESIS_MAX_OUTPUT_TOKENS)
+        : undefined,
     messages: [
       {
         role: "system",
-        content:
-          "Synthesize the chunk results into one final answer. Preserve all constraints and avoid contradictions.",
+        content: SYNTHESIS_PREAMBLE,
       },
       {
         role: "user",
-        content: [
-          "Original task:",
-          JSON.stringify(originalRequest.messages ?? []),
-          "",
-          "Chunk outputs:",
-          ...chunkOutputs.map((output, index) => `Chunk ${index + 1}:\n${output}`),
-        ].join("\n"),
+        content: truncateByTokens(synthesisBody, synthesisInputBudget),
       },
     ],
   };

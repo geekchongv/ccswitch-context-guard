@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.4.5
+
+- Closed the remaining chunking overflow path: final synthesis requests no longer re-inject the full original `messages` JSON after chunk execution.
+- Added hard-cap aware synthesis truncation so both chunk calls and the final synthesis call stay within the same input budget.
+- Capped synthesis output tokens at 4,000 to avoid recreating the original `input + 64k output` context-limit failure pattern.
+- Added regression tests proving oversized original messages and excessive chunk outputs are truncated before synthesis.
+- Published a clean Windows GUI release zip with the portable exe, `config.example.json`, README, docs, license, changelog, and SHA256 checksum.
+
 ## v0.4.4
 
 - Changed the default UI startup behavior: the local dashboard remains available, but `ui.openOnStart` now defaults to `false` so CLI/script startup no longer opens a browser tab automatically.

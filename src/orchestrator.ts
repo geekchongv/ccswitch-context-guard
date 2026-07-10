@@ -353,7 +353,7 @@ export class Orchestrator {
         });
       }
 
-      const synthesisRequest = buildSynthesisRequest(workingRequest, chunkOutputs);
+      const synthesisRequest = buildSynthesisRequest(workingRequest, chunkOutputs, chunkHardCap);
       const synthesisResponse = await this.upstreamClient.postJson(routePath, synthesisRequest, upstreamHeaders);
 
       this.logger.info("请求完成", {
