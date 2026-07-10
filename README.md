@@ -10,7 +10,7 @@ A transparent safety proxy that sits between Claude CLI / Claude Desktop and [cc
 
 <p align="center">
   <img alt="CI" src="https://img.shields.io/github/actions/workflow/status/geekchongv/ccswitch-context-guard/ci.yml?branch=main&label=CI&style=flat-square">
-  <img alt="version" src="https://img.shields.io/badge/version-v0.4.2-2ea44f?style=flat-square">
+  <img alt="version" src="https://img.shields.io/badge/version-v0.4.5-2ea44f?style=flat-square">
   <img alt="release" src="https://img.shields.io/github/v/release/geekchongv/ccswitch-context-guard?style=flat-square&color=blue">
   <img alt="platform" src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blue?style=flat-square">
   <img alt="language" src="https://img.shields.io/badge/lang-TypeScript-3178c6?style=flat-square">
@@ -26,6 +26,14 @@ A transparent safety proxy that sits between Claude CLI / Claude Desktop and [cc
   <a href="#-configuration">🔧 Configuration</a> ·
   <a href="CONTRIBUTING.md">🤝 Contributing</a> ·
   <a href="#-中文说明">🇨🇳 中文说明</a>
+</p>
+
+<p align="center">
+  <img width="100%" alt="CCProxy Agent makes Claude CLI and Claude Desktop feel closer to native Claude on private model stacks" src="docs/images/ccproxy-agent-hero.png">
+</p>
+
+<p align="center">
+  <img width="100%" alt="Four user stories solved by CCProxy Agent: long sessions, compact reminders, chunking, and image summaries" src="docs/images/ccproxy-agent-user-stories.png">
 </p>
 
 ---
