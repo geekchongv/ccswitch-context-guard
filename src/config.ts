@@ -23,7 +23,7 @@ const defaultConfig: AppConfig = {
     responseReserve: 12000,
     chunkTarget: 90000,
     safetyMargin: 8000,
-    compactMode: "warn",
+    compactMode: "proxy",
     compactWarningText:
       "[上下文提醒] 当前会话已经接近上下文上限，建议你现在执行 /compact 后再继续。",
     autoReduceMaxTokens: true,

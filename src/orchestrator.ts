@@ -390,6 +390,41 @@ export class Orchestrator {
       response = inspected.replayResponse;
 
       if (inspected.contextError.detected) {
+        const beforeContextErrorCompactTokens = estimateRequestTokens(
+          workingRequest,
+          this.config.tokenPolicy.responseReserve,
+        ).inputTokens;
+        const compactRetryRequest = compactRequest(workingRequest);
+        const afterContextErrorCompactTokens = estimateRequestTokens(
+          compactRetryRequest,
+          this.config.tokenPolicy.responseReserve,
+        ).inputTokens;
+        if (
+          afterContextErrorCompactTokens < beforeContextErrorCompactTokens &&
+          (
+            (inspected.contextError.inputTokens ?? beforeContextErrorCompactTokens) >= this.config.tokenPolicy.compactThreshold ||
+            inspected.contextError.detected
+          )
+        ) {
+          workingRequest = compactRetryRequest;
+          compacted = true;
+          budget = assessBudget(
+            workingRequest,
+            this.config.tokenPolicy.compactThreshold,
+            this.config.tokenPolicy.hardLimit,
+            this.config.tokenPolicy.responseReserve,
+            this.config.tokenPolicy.safetyMargin,
+          );
+          this.logger.warn("上游返回上下文超限后已触发代理端压缩", {
+            requestId,
+            routePath,
+            beforeCompactInputTokens: beforeContextErrorCompactTokens,
+            afterCompactInputTokens: afterContextErrorCompactTokens,
+            providerInputTokens: inspected.contextError.inputTokens,
+            postCompactDecision: budget.decision,
+          });
+        }
+
         const retryAdjustment = this.reduceMaxTokensAfterContextError(
           workingRequest,
           inspected.contextError,
@@ -532,10 +567,13 @@ export class Orchestrator {
       const absoluteAvailableOutputTokens = Math.floor(
         contextError.contextLimit - contextError.inputTokens - PROVIDER_CONTEXT_RETRY_TOKEN_BUFFER,
       );
+      const minOutputWithRetryBuffer = this.config.tokenPolicy.minOutputTokens + PROVIDER_CONTEXT_RETRY_TOKEN_BUFFER;
       const adjustedMaxTokens =
         safetyAvailableOutputTokens >= this.config.tokenPolicy.minOutputTokens
           ? safetyAvailableOutputTokens
-          : Math.max(1, absoluteAvailableOutputTokens);
+          : contextError.contextLimit - contextError.inputTokens >= minOutputWithRetryBuffer
+            ? this.config.tokenPolicy.minOutputTokens
+            : Math.max(1, absoluteAvailableOutputTokens);
 
       if (adjustedMaxTokens < originalMaxTokens && contextError.inputTokens < contextError.contextLimit) {
         return {

@@ -182,7 +182,134 @@ test("orchestrator retries with provider-reported token counts when local estima
 
     assert.equal(response.status, 200);
     assert.equal(payload.content[0]?.text, "provider count retry ok");
-    assert.deepEqual(receivedMaxTokens, [4096, 3839]);
+    assert.deepEqual(receivedMaxTokens, [4096, 1024]);
+  } finally {
+    upstream.close();
+    await once(upstream, "close");
+  }
+});
+
+test("orchestrator retries with minimum output when provider count leaves no safety margin", async () => {
+  mkdirSync("test-output/logs", { recursive: true });
+  mkdirSync("test-output/runtime/sessions", { recursive: true });
+
+  const receivedMaxTokens: number[] = [];
+  const upstream = http.createServer(async (request, response) => {
+    const body = await readJson(request);
+    receivedMaxTokens.push(Number(body.max_tokens));
+
+    if (receivedMaxTokens.length === 1) {
+      response.writeHead(400, { "content-type": "application/json; charset=utf-8" });
+      response.end(
+        JSON.stringify({
+          error:
+            "This model's maximum context length is 200000 tokens. However, you requested 3839 output tokens and your prompt contains at least 196162 input tokens, for a total of at least 200001 tokens. Please reduce the length of the input prompt or the number of requested output tokens. (parameter=input_tokens, value=196162)",
+        }),
+      );
+      return;
+    }
+
+    response.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+    response.end(
+      JSON.stringify({
+        content: [{ type: "text", text: "minimum output retry ok" }],
+      }),
+    );
+  });
+
+  upstream.listen(0, "127.0.0.1");
+  await once(upstream, "listening");
+  const address = upstream.address();
+  assert.ok(address && typeof address === "object");
+
+  try {
+    const config = buildTestConfig(address.port);
+    const orchestrator = new Orchestrator(
+      config,
+      new Logger(config.logging),
+      new SessionStore(config.runtime.directory),
+    );
+    const request: ChatCompletionRequest = {
+      messages: [{ role: "user", content: "compact retry is already near provider hard limit" }],
+      max_tokens: 3839,
+    };
+
+    const response = await orchestrator.handle("/v1/messages", request);
+    const payload = (await response.json()) as { content: { text: string }[] };
+
+    assert.equal(response.status, 200);
+    assert.equal(payload.content[0]?.text, "minimum output retry ok");
+    assert.deepEqual(receivedMaxTokens, [3839, 1024]);
+  } finally {
+    upstream.close();
+    await once(upstream, "close");
+  }
+});
+
+test("orchestrator compacts before retrying a provider context-limit failure", async () => {
+  mkdirSync("test-output/logs", { recursive: true });
+  mkdirSync("test-output/runtime/sessions", { recursive: true });
+
+  const receivedBodies: ChatCompletionRequest[] = [];
+  const upstream = http.createServer(async (request, response) => {
+    const body = await readJson(request) as ChatCompletionRequest;
+    receivedBodies.push(body);
+
+    if (receivedBodies.length === 1) {
+      response.writeHead(400, { "content-type": "application/json; charset=utf-8" });
+      response.end(
+        JSON.stringify({
+          error:
+            "This model's maximum context length is 200000 tokens. However, you requested 3839 output tokens and your prompt contains at least 196162 input tokens, for a total of at least 200001 tokens. Please reduce the length of the input prompt or the number of requested output tokens. (parameter=input_tokens, value=196162)",
+        }),
+      );
+      return;
+    }
+
+    response.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+    response.end(
+      JSON.stringify({
+        content: [{ type: "text", text: "compacted retry ok" }],
+      }),
+    );
+  });
+
+  upstream.listen(0, "127.0.0.1");
+  await once(upstream, "listening");
+  const address = upstream.address();
+  assert.ok(address && typeof address === "object");
+
+  try {
+    const config = buildTestConfig(address.port);
+    const orchestrator = new Orchestrator(
+      config,
+      new Logger(config.logging),
+      new SessionStore(config.runtime.directory),
+    );
+    const request: ChatCompletionRequest = {
+      messages: Array.from({ length: 12 }, (_, index) => ({
+        role: index % 2 === 0 ? "user" : "assistant",
+        content: `message ${index} ` + "context ".repeat(1000),
+      })),
+      max_tokens: 3839,
+    };
+
+    const response = await orchestrator.handle("/v1/messages", request);
+    const payload = (await response.json()) as { content: { text: string }[] };
+    const firstBody = receivedBodies[0];
+    const retryBody = receivedBodies[1];
+
+    assert.equal(response.status, 200);
+    assert.equal(payload.content[0]?.text, "compacted retry ok");
+    assert.ok(firstBody);
+    assert.ok(firstBody.messages);
+    assert.ok(retryBody);
+    assert.ok(retryBody.messages);
+    const retryText = JSON.stringify(retryBody.messages);
+
+    assert.ok(firstBody.messages.length > retryBody.messages.length);
+    assert.match(retryText, /\[COMPACT MEMORY\]/);
+    assert.equal(retryBody.max_tokens, 1024);
   } finally {
     upstream.close();
     await once(upstream, "close");

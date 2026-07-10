@@ -159,7 +159,7 @@ Copy `config.example.json` → `config.json`. Key sections:
     "compactThreshold": 180000,
     "hardLimit": 200000,
     "safetyMargin": 8000,
-    "compactMode": "warn",
+    "compactMode": "proxy",
     "autoReduceMaxTokens": true,
     "retryOnContextError": true,
     "minOutputTokens": 1024

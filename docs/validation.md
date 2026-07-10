@@ -10,7 +10,7 @@ The proxy is considered acceptable for v0.2 use when all items below pass.
 2. Non-AI routes are transparently forwarded to the upstream service.
 3. `POST /v1/messages` can pass through the proxy and return a provider response.
 4. `POST /v1/chat/completions` can pass through the proxy when the upstream provider configuration supports it.
-5. Requests over the compact threshold trigger a `/compact` warning when `compactMode = "warn"`.
+5. Requests over the compact threshold trigger proxy-side compaction when `compactMode = "proxy"`.
 6. Requests whose requested output would exceed the safe context budget automatically lower `max_tokens`.
 7. Upstream context-limit `400` errors are parsed and retried once when a safe output budget is available.
 8. Claude Desktop 3P configs are patched from `15721` to `15722` and restored on shutdown.
