@@ -78,7 +78,7 @@ export class ClaudeConfigPatcher {
 
   private applyClaudeCli(): void {
     if (!this.config.claudeConfigPatch.enabled) {
-      this.logger.info("Claude config patching disabled");
+      this.logger.debug("Claude config patching disabled");
       return;
     }
 
@@ -95,7 +95,7 @@ export class ClaudeConfigPatcher {
     const proxyBaseUrl = `http://${this.config.server.host}:${this.config.server.port}`;
 
     if (currentBaseUrl === proxyBaseUrl) {
-      this.logger.info("Claude settings already point to the proxy", { settingsPath, proxyBaseUrl });
+      this.logger.debug("Claude settings already point to the proxy", { settingsPath, proxyBaseUrl });
       return;
     }
 
@@ -159,7 +159,7 @@ export class ClaudeConfigPatcher {
       this.writeSettings(state.settingsPath, nextSettings);
       this.safeDeleteState();
 
-      this.logger.info("Restored Claude CLI settings", {
+      this.logger.debug("Restored Claude CLI settings", {
         settingsPath: state.settingsPath,
         restoredBaseUrl: state.previousBaseUrl,
       });
@@ -172,7 +172,7 @@ export class ClaudeConfigPatcher {
 
   private applyClaudeDesktop(): void {
     if (!this.config.claudeDesktopConfigPatch.enabled) {
-      this.logger.info("Claude Desktop config patching disabled");
+      this.logger.debug("Claude Desktop config patching disabled");
       return;
     }
 
@@ -199,7 +199,7 @@ export class ClaudeConfigPatcher {
     }
 
     if (currentGatewayBaseUrl === proxyGatewayBaseUrl) {
-      this.logger.info("Claude Desktop settings already point to the proxy", {
+      this.logger.debug("Claude Desktop settings already point to the proxy", {
         configPath: target.configPath,
         proxyGatewayBaseUrl,
       });
@@ -293,7 +293,7 @@ export class ClaudeConfigPatcher {
       this.writeDesktopGatewayConfig(state.configPath, nextConfig);
       this.safeDeleteDesktopState();
 
-      this.logger.info("Restored Claude Desktop 3P gateway settings", {
+      this.logger.debug("Restored Claude Desktop 3P gateway settings", {
         configPath: state.configPath,
         restoredGatewayBaseUrl: state.previousGatewayBaseUrl,
       });

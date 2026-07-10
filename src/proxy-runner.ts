@@ -97,7 +97,7 @@ export async function startProxy(options: StartProxyOptions = {}): Promise<Proxy
   });
 
   if (config.server.autoPort ?? true) {
-    logger.info("Resolving available listen port", {
+    logger.debug("Resolving available listen port", {
       host: config.server.host,
       preferredPort: config.server.port,
       maxTries: MAX_PORT_TRIES,
@@ -110,7 +110,7 @@ export async function startProxy(options: StartProxyOptions = {}): Promise<Proxy
     );
     config.server.port = resolvedPort;
   } else {
-    logger.info("autoPort disabled; using configured listen port", {
+    logger.debug("autoPort disabled; using configured listen port", {
       host: config.server.host,
       port: config.server.port,
     });
@@ -122,7 +122,7 @@ export async function startProxy(options: StartProxyOptions = {}): Promise<Proxy
     config.upstream.baseUrl = discovery.baseUrl;
     upstreamSource = discovery.source;
   } else {
-    logger.info("autoDiscover disabled; using configured upstream", { baseUrl: config.upstream.baseUrl });
+    logger.debug("autoDiscover disabled; using configured upstream", { baseUrl: config.upstream.baseUrl });
   }
 
   await new Promise<void>((resolve, reject) => {

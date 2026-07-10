@@ -1,6 +1,6 @@
 {
   "name": "ccproxy-agent",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "description": "A local orchestration proxy above ccswitch for compaction, token budgeting, and multimodal routing.",
   "type": "module",
   "main": "dist/electron-main.js",

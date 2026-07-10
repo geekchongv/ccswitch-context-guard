@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.4.3
+
+- Reduced log noise: demoted routine startup and per-request diagnostic logs to `debug`, reserving `info` for decisions a user acts on (request completed, vision preprocessing, compact triggered, failures).
+- Captured upstream error response bodies for diagnosis: non-success upstream responses are now replayed to the caller with their body intact, and the first 2 KB of the upstream body is logged on failure.
+- Added log file rotation: the agent log archives to `.1` once it exceeds 5 MB, preventing unbounded growth. Rotation now repeats across a session instead of firing once.
+- Surfaced a warning when a request looks like it carries images but vision preprocessing did not match a supported image format.
+- Excluded the Electron main/preload sources from the Node `tsc` build to keep `npm run build` focused on the proxy entry point.
+
 ## v0.4.2
 
 - Added a product-focused health panel to the desktop console.

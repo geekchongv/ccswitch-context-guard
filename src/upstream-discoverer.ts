@@ -33,7 +33,7 @@ export async function discoverUpstream(
   // 1. 验证配置的上游
   const configuredProbe = await probeUpstream(configuredBaseUrl, probeTimeoutMs);
   if (configuredProbe) {
-    logger.info("已确认配置的上游可达", { baseUrl: configuredBaseUrl });
+    logger.debug("已确认配置的上游可达", { baseUrl: configuredBaseUrl });
     return { baseUrl: configuredBaseUrl, source: "configured" };
   }
 
@@ -54,7 +54,7 @@ export async function discoverUpstream(
       });
       return { baseUrl: candidate, source: "discovered" };
     }
-    logger.info("候选端口无响应,继续扫描", { candidateBaseUrl: candidate });
+    logger.debug("候选端口无响应,继续扫描", { candidateBaseUrl: candidate });
   }
 
   // 3. 全部失败,沿用配置值

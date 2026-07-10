@@ -166,7 +166,7 @@ export function createServer(
       const rawBody = request.method === "GET" || request.method === "HEAD" ? Buffer.alloc(0) : await readRawBody(request);
 
       if (request.method === "POST" && isJsonRequest(request) && isAiRoute(config, routePath)) {
-        logger.info("识别为AI请求，准备进入编排层", {
+        logger.debug("识别为AI请求，准备进入编排层", {
           routePath,
           method: request.method,
         });
@@ -184,7 +184,7 @@ export function createServer(
         body: rawBody.length > 0 ? rawBody.toString("utf8") : undefined,
       });
 
-      logger.info("普通透传请求已转发到上游", {
+      logger.debug("普通透传请求已转发到上游", {
         routePath,
         method: request.method ?? "GET",
         status: upstreamResponse.status,

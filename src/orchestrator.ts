@@ -4,7 +4,7 @@ import { Logger } from "./logger.js";
 import { SessionStore } from "./session-store.js";
 import { assessBudget } from "./token-estimator.js";
 import { compactRequest } from "./compactor.js";
-import { enrichRequestWithVision } from "./modality-router.js";
+import { enrichRequestWithVision, hasImageInput } from "./modality-router.js";
 import { buildChunkPlan, buildSynthesisRequest } from "./chunking.js";
 import { UpstreamClient } from "./upstream-client.js";
 import { appendCompactWarning } from "./response-warning.js";
@@ -126,6 +126,27 @@ async function inspectContextLimitResponse(response: Response): Promise<{
   };
 }
 
+/**
+ * 消费上游错误响应，截取 body 前若干字符用于诊断日志，同时返回一个可重新读取的 Response 供下游回传。
+ * 仅用于 !ok 的响应；成功响应不应走这里。
+ */
+async function captureUpstreamError(
+  response: Response,
+  previewBytes = 2000,
+): Promise<{ replayResponse: Response; bodyPreview: string }> {
+  const bodyText = await response.text();
+  const headers = cloneHeaders(response.headers);
+
+  return {
+    bodyPreview: bodyText.slice(0, previewBytes),
+    replayResponse: new Response(bodyText, {
+      status: response.status,
+      statusText: response.statusText,
+      headers,
+    }),
+  };
+}
+
 export class Orchestrator {
   private readonly upstreamClient: UpstreamClient;
 
@@ -163,16 +184,12 @@ export class Orchestrator {
       this.config.tokenPolicy.safetyMargin,
     );
 
-    this.logger.info("Token预算评估", {
+    this.logger.debug("Token预算评估", {
       requestId,
       routePath,
       inputTokens: budget.estimate.inputTokens,
       expectedOutputTokens: budget.estimate.expectedOutputTokens,
       totalTokens: budget.estimate.totalTokens,
-      compactThreshold: this.config.tokenPolicy.compactThreshold,
-      hardLimit: this.config.tokenPolicy.hardLimit,
-      safetyMargin: this.config.tokenPolicy.safetyMargin,
-      effectiveHardLimit: this.config.tokenPolicy.hardLimit - this.config.tokenPolicy.safetyMargin,
       decision: budget.decision,
       visionUsed: withVision.vision.used,
     });
@@ -180,7 +197,15 @@ export class Orchestrator {
     if (withVision.vision.used) {
       this.logger.info("检测到图片并完成预处理", {
         requestId,
+        imageCount: withVision.vision.imageCount,
         summaryPreview: withVision.vision.summary?.slice(0, 160) ?? "",
+      });
+    } else if (this.config.vision.enabled && hasImageInput(request)) {
+      // 视觉已启用、请求里疑似带图，却没能识别出可处理的图片 —— 通常是上游格式未覆盖。
+      this.logger.warn("请求疑似包含图片但视觉预处理未命中，原始图片将直通下游", {
+        requestId,
+        routePath,
+        visionUsed: false,
       });
     }
 
@@ -225,8 +250,6 @@ export class Orchestrator {
           routePath,
           beforeCompactTokens,
           afterCompactTokens: budget.estimate.totalTokens,
-          compactThreshold: this.config.tokenPolicy.compactThreshold,
-          effectiveHardLimit: this.config.tokenPolicy.hardLimit - this.config.tokenPolicy.safetyMargin,
           postCompactDecision: budget.decision,
         });
       } else {
@@ -235,13 +258,10 @@ export class Orchestrator {
           requestId,
           routePath,
           totalTokens: budget.estimate.totalTokens,
-          compactThreshold: this.config.tokenPolicy.compactThreshold,
-          effectiveHardLimit: this.config.tokenPolicy.hardLimit - this.config.tokenPolicy.safetyMargin,
-          warningText: this.config.tokenPolicy.compactWarningText,
         });
       }
     } else {
-      this.logger.info("未触发上下文压缩", {
+      this.logger.debug("未触发上下文压缩", {
         requestId,
         routePath,
         totalTokens: budget.estimate.totalTokens,
@@ -254,14 +274,12 @@ export class Orchestrator {
         requestId,
         routePath,
         totalTokens: budget.estimate.totalTokens,
-        hardLimit: this.config.tokenPolicy.hardLimit,
-        effectiveHardLimit: this.config.tokenPolicy.hardLimit - this.config.tokenPolicy.safetyMargin,
         chunkTarget: this.config.tokenPolicy.chunkTarget,
       });
       const chunkPlan = buildChunkPlan(workingRequest, this.config.tokenPolicy.chunkTarget);
       const chunkOutputs: string[] = [];
 
-      this.logger.info("分块计划已生成", {
+      this.logger.debug("分块计划已生成", {
         requestId,
         routePath,
         chunkCount: chunkPlan.length,
@@ -270,18 +288,32 @@ export class Orchestrator {
       for (const [index, chunkRequest] of chunkPlan.entries()) {
         const chunkResponse = await this.upstreamClient.postJson(routePath, chunkRequest, upstreamHeaders);
         if (!chunkResponse.ok) {
+          const { replayResponse, bodyPreview } = await captureUpstreamError(chunkResponse);
           this.logger.error("分块执行失败", {
             requestId,
             routePath,
             chunkIndex: index + 1,
             status: chunkResponse.status,
+            upstreamBody: bodyPreview,
           });
-          return chunkResponse;
+          this.saveRecord({
+            requestId,
+            timestamp,
+            routePath,
+            budget,
+            compacted,
+            compactWarning,
+            chunked,
+            maxTokensReduced,
+            retriedAfterContextError,
+            vision: withVision.vision,
+          });
+          return replayResponse;
         }
 
         const chunkPayload = (await chunkResponse.json()) as Record<string, unknown>;
         chunkOutputs.push(extractAssistantText(chunkPayload));
-        this.logger.info("分块执行完成", {
+        this.logger.debug("分块执行完成", {
           requestId,
           routePath,
           chunkIndex: index + 1,
@@ -292,10 +324,13 @@ export class Orchestrator {
       const synthesisRequest = buildSynthesisRequest(workingRequest, chunkOutputs);
       const synthesisResponse = await this.upstreamClient.postJson(routePath, synthesisRequest, upstreamHeaders);
 
-      this.logger.info("分块结果汇总完成", {
+      this.logger.info("请求完成", {
         requestId,
         routePath,
         status: synthesisResponse.status,
+        chunked,
+        visionUsed: withVision.vision.used,
+        inputTokens: budget.estimate.inputTokens,
       });
 
       this.saveRecord({
@@ -332,7 +367,6 @@ export class Orchestrator {
           status: response.status,
           contextLimit: inspected.contextError.contextLimit,
           inputTokens: inspected.contextError.inputTokens,
-          requestedOutputTokens: inspected.contextError.requestedOutputTokens,
           canRetry: retryAdjustment.adjusted,
         });
 
@@ -345,13 +379,25 @@ export class Orchestrator {
             routePath,
             originalMaxTokens: retryAdjustment.originalMaxTokens,
             adjustedMaxTokens: retryAdjustment.adjustedMaxTokens,
-            contextLimit: inspected.contextError.contextLimit,
-            inputTokens: inspected.contextError.inputTokens,
-            safetyMargin: this.config.tokenPolicy.safetyMargin,
           });
           response = await this.upstreamClient.postJson(routePath, workingRequest, upstreamHeaders);
         }
       }
+    }
+
+    // 失败响应：补记上游 body 供诊断，并确保回传一个可重新读取的 Response。
+    if (!response.ok) {
+      const { replayResponse, bodyPreview } = await captureUpstreamError(response);
+      response = replayResponse;
+      this.logger.warn("上游返回非成功状态", {
+        requestId,
+        routePath,
+        status: response.status,
+        chunked,
+        visionUsed: withVision.vision.used,
+        inputTokens: budget.estimate.inputTokens,
+        upstreamBody: bodyPreview,
+      });
     }
 
     if (compactWarning) {
@@ -362,16 +408,19 @@ export class Orchestrator {
       });
     }
 
-    this.logger.info("请求已转发完成", {
-      requestId,
-      routePath,
-      status: response.status,
-      compacted,
-      compactWarning,
-      chunked,
-      maxTokensReduced,
-      retriedAfterContextError,
-    });
+    if (response.ok) {
+      this.logger.info("请求完成", {
+        requestId,
+        routePath,
+        status: response.status,
+        compacted,
+        compactWarning,
+        chunked,
+        maxTokensReduced,
+        visionUsed: withVision.vision.used,
+        inputTokens: budget.estimate.inputTokens,
+      });
+    }
 
     this.saveRecord({
       requestId,
@@ -391,7 +440,7 @@ export class Orchestrator {
 
   private saveRecord(record: OrchestrationRecord): void {
     this.sessionStore.saveRecord(record);
-    this.logger.info("已保存会话编排记录", {
+    this.logger.debug("已保存会话编排记录", {
       requestId: record.requestId,
       routePath: record.routePath,
       compacted: record.compacted,

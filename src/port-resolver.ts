@@ -29,12 +29,12 @@ export async function resolveFreePort(
           resolvedPort: port,
         });
       } else {
-        logger.info("已确认配置端口可用", { host, port });
+        logger.debug("已确认配置端口可用", { host, port });
       }
       return port;
     }
 
-    logger.info("端口已被占用,尝试下一个端口", {
+    logger.debug("端口已被占用,尝试下一个端口", {
       host,
       busyPort: port,
       nextPort: attempt + 1 < maxTries ? port + 1 : null,

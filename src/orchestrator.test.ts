@@ -188,6 +188,46 @@ test("orchestrator retries with provider-reported token counts when local estima
   }
 });
 
+test("orchestrator replays an upstream non-context failure body to the caller", async () => {
+  mkdirSync("test-output/logs", { recursive: true });
+  mkdirSync("test-output/runtime/sessions", { recursive: true });
+
+  const upstreamErrorBody = JSON.stringify({ error: "model is overloaded" });
+
+  const upstream = http.createServer(async (_request, response) => {
+    // 非 context-limit 的普通失败：编排层不应重试，而应原样回传 body 与状态码。
+    response.writeHead(500, { "content-type": "application/json; charset=utf-8" });
+    response.end(upstreamErrorBody);
+  });
+
+  upstream.listen(0, "127.0.0.1");
+  await once(upstream, "listening");
+  const address = upstream.address();
+  assert.ok(address && typeof address === "object");
+
+  try {
+    const config = buildTestConfig(address.port);
+    const orchestrator = new Orchestrator(
+      config,
+      new Logger(config.logging),
+      new SessionStore(config.runtime.directory),
+    );
+    const request: ChatCompletionRequest = {
+      messages: [{ role: "user", content: "trigger generic upstream failure" }],
+      max_tokens: 1024,
+    };
+
+    const response = await orchestrator.handle("/v1/messages", request);
+    const text = await response.text();
+
+    assert.equal(response.status, 500);
+    assert.equal(text, upstreamErrorBody);
+  } finally {
+    upstream.close();
+    await once(upstream, "close");
+  }
+});
+
 test("orchestrator preserves authorization headers for Claude Desktop gateway requests", async () => {
   mkdirSync("test-output/logs", { recursive: true });
   mkdirSync("test-output/runtime/sessions", { recursive: true });
