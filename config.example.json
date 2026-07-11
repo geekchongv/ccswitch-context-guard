@@ -15,8 +15,8 @@
     "autoDiscover": true
   },
   "tokenPolicy": {
-    "compactThreshold": 180000,
-    "hardLimit": 200000,
+    "compactThreshold": 90000,
+    "hardLimit": 130000,
     "responseReserve": 12000,
     "chunkTarget": 90000,
     "safetyMargin": 8000,
@@ -26,8 +26,8 @@
     "retryOnContextError": true,
     "minOutputTokens": 1024,
     "toolResultClearingEnabled": true,
-    "toolResultClearTrigger": 170000,
-    "toolResultClearTarget": 150000,
+    "toolResultClearTrigger": 80000,
+    "toolResultClearTarget": 65000,
     "toolResultKeepRecent": 3
   },
   "vision": {
