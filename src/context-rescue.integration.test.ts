@@ -121,7 +121,43 @@ test("HTTP proxy rescues an Agent context error and returns the retry response",
     assert.equal(upstreamBodies.length, 2);
     assert.equal(JSON.stringify(upstreamBodies[0]).includes("cleared by CCProxy Agent"), false);
     assert.equal(JSON.stringify(upstreamBodies[1]).includes("cleared by CCProxy Agent"), true);
+    const retryText = JSON.stringify(upstreamBodies[1]);
+    assert.match(retryText, /result-4/);
+    assert.match(retryText, /middle of tool result truncated|large source output/);
     assert.equal(upstreamBodies[1]?.max_tokens, 1024);
+  } finally {
+    proxy.close();
+    upstream.close();
+    await Promise.all([once(proxy, "close"), once(upstream, "close")]);
+  }
+});
+
+test("HTTP proxy rejects oversized request bodies with 413", async () => {
+  const upstream = http.createServer((_request, response) => {
+    response.writeHead(500);
+    response.end();
+  });
+  upstream.listen(0, "127.0.0.1");
+  await once(upstream, "listening");
+  const upstreamAddress = upstream.address();
+  assert.ok(upstreamAddress && typeof upstreamAddress === "object");
+  const config = configFor(upstreamAddress.port);
+  config.server.maxRequestBodyBytes = 1_000_000;
+  const logger = new Logger(config.logging);
+  const proxy = createServer(config, logger, new Orchestrator(config, logger, new SessionStore(config.runtime.directory)));
+  proxy.listen(0, "127.0.0.1");
+  await once(proxy, "listening");
+  const proxyAddress = proxy.address();
+  assert.ok(proxyAddress && typeof proxyAddress === "object");
+
+  try {
+    const response = await fetch(`http://127.0.0.1:${proxyAddress.port}/v1/messages`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ messages: [{ role: "user", content: "x".repeat(1_100_000) }] }),
+    });
+    assert.equal(response.status, 413);
+    assert.match(await response.text(), /request body too large/);
   } finally {
     proxy.close();
     upstream.close();

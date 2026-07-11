@@ -118,8 +118,12 @@ test("orchestrator proactively clears old tool results without breaking protocol
   const received: ChatCompletionRequest[] = [];
   const upstream = http.createServer(async (request, response) => {
     received.push((await readJson(request)) as ChatCompletionRequest);
-    response.writeHead(200, { "content-type": "application/json; charset=utf-8" });
-    response.end(JSON.stringify({ content: [{ type: "text", text: "cleared safely" }] }));
+    const body = JSON.stringify({ content: [{ type: "text", text: "cleared safely" }] }, null, 2);
+    response.writeHead(200, {
+      "content-type": "application/json; charset=utf-8",
+      "content-length": Buffer.byteLength(body),
+    });
+    response.end(body);
   });
   upstream.listen(0, "127.0.0.1");
   await once(upstream, "listening");
@@ -136,6 +140,7 @@ test("orchestrator proactively clears old tool results without breaking protocol
     const response = await orchestrator.handle("/v1/messages", buildToolHistory(500));
 
     assert.equal(response.status, 200);
+    assert.equal(response.headers.get("content-length"), null);
     assert.equal(received.length, 1);
     const uses = requestToolParts(received[0], "tool_use");
     const results = requestToolParts(received[0], "tool_result");
@@ -189,8 +194,8 @@ test("orchestrator replays the 198977 plus 1024 context error with structural to
     const retryUses = requestToolParts(received[1], "tool_use");
     const retryResults = requestToolParts(received[1], "tool_result");
     assert.deepEqual(retryUses.map((part) => part.id), retryResults.map((part) => part.tool_use_id));
-    // 救援路径强制 keepRecent=0：上游已经 400，任何 tool result（包括最近的）都可能超限，全部清空。
-    assert.equal(retryResults.every((part) => String(part.content).includes("cleared by CCProxy Agent")), true);
+    assert.equal(retryResults.slice(0, -1).every((part) => String(part.content).includes("cleared by CCProxy Agent")), true);
+    assert.equal(String(retryResults.at(-1)?.content).startsWith("tool-output-"), true);
     assert.equal(received[1]?.max_tokens, 1024);
   } finally {
     upstream.close();
@@ -665,9 +670,22 @@ test("orchestrator chunks an oversized request and every chunk stays under the h
   const hardCap = hardLimit - safetyMargin - responseReserve; // 3700
 
   const receivedChunks: ChatCompletionRequest[] = [];
+  let synthesisAttempts = 0;
   const upstream = http.createServer(async (request, response) => {
     const body = (await readJson(request)) as ChatCompletionRequest;
     receivedChunks.push(body);
+    const synthesis = typeof body.messages?.[0]?.content === "string" &&
+      /Synthesize the chunk results/.test(body.messages[0].content);
+    if (synthesis) {
+      synthesisAttempts += 1;
+      if (synthesisAttempts === 1) {
+        response.writeHead(400, { "content-type": "application/json; charset=utf-8" });
+        response.end(JSON.stringify({
+          error: "This model's maximum context length is 4000 tokens. However, you requested 100 output tokens and your prompt contains at least 3950 input tokens, for a total of at least 4050 tokens.",
+        }));
+        return;
+      }
+    }
     response.writeHead(200, { "content-type": "application/json; charset=utf-8" });
     response.end(JSON.stringify({ content: [{ type: "text", text: "chunk ok" }] }));
   });
@@ -704,6 +722,7 @@ test("orchestrator chunks an oversized request and every chunk stays under the h
 
     const response = await orchestrator.handle("/v1/messages", request);
     assert.equal(response.status, 200);
+    assert.equal(synthesisAttempts, 2);
 
     // receivedChunks 包含分块请求 + 最后的合成请求;两者都必须在硬上限内。
     const chunkRequests = receivedChunks.filter(

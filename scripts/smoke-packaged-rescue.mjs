@@ -140,8 +140,12 @@ try {
       body: "{}",
     });
   } catch {}
-  await new Promise((resolve) => setTimeout(resolve, 1500));
-  child.kill();
+  const exited = child.exitCode !== null || await Promise.race([
+    new Promise((resolve) => child.once("exit", () => resolve(true))),
+    new Promise((resolve) => setTimeout(() => resolve(false), 5_000)),
+  ]);
+  if (!exited) child.kill();
   await new Promise((resolve) => upstream.close(resolve));
   fs.rmSync(configPath, { force: true });
+  fs.rmSync(portableTemp, { recursive: true, force: true });
 }

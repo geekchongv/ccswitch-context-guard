@@ -9,6 +9,7 @@ const defaultConfig: AppConfig = {
     host: "127.0.0.1",
     port: 15722,
     autoPort: true,
+    maxRequestBodyBytes: 64_000_000,
   },
   upstream: {
     baseUrl: "http://127.0.0.1:15721",
@@ -18,8 +19,8 @@ const defaultConfig: AppConfig = {
     autoDiscover: true,
   },
   tokenPolicy: {
-    compactThreshold: 180000,
-    hardLimit: 200000,
+    compactThreshold: 90000,
+    hardLimit: 130000,
     responseReserve: 12000,
     chunkTarget: 90000,
     safetyMargin: 8000,
@@ -30,8 +31,8 @@ const defaultConfig: AppConfig = {
     retryOnContextError: true,
     minOutputTokens: 1024,
     toolResultClearingEnabled: true,
-    toolResultClearTrigger: 170_000,
-    toolResultClearTarget: 150_000,
+    toolResultClearTrigger: 80_000,
+    toolResultClearTarget: 65_000,
     toolResultKeepRecent: 3,
   },
   vision: {

@@ -153,6 +153,42 @@ test("ClaudeConfigPatcher adds native auto-compact and observer hooks without re
   assert.deepEqual(Object.keys(restored.hooks), ["Notification"]);
 });
 
+test("ClaudeConfigPatcher refreshes a stale observer hook token after an unclean exit", () => {
+  const root = path.resolve("test-output", "cli-patcher-stale-hook");
+  const settingsPath = path.join(root, "settings.json");
+  const runtimeDirectory = "./test-output/cli-patcher-stale-hook/runtime";
+  rmSync(root, { recursive: true, force: true });
+  mkdirSync(path.resolve(runtimeDirectory, "sessions"), { recursive: true });
+  writeFileSync(settingsPath, `${JSON.stringify({
+    hooks: {
+      PostToolBatch: [{
+        matcher: "",
+        hooks: [{
+          type: "http",
+          url: "http://127.0.0.1:15722/hooks/post-tool-batch",
+          headers: { "x-ccproxy-hook-token": "stale-token" },
+        }],
+      }],
+    },
+  }, null, 2)}\n`, "utf8");
+
+  const config = buildConfig("", runtimeDirectory);
+  config.claudeConfigPatch = { enabled: true, settingsPath, hookObserverEnabled: true };
+  config.claudeDesktopConfigPatch.enabled = false;
+  const patcher = new ClaudeConfigPatcher(config, new Logger(config.logging), { token: "fresh-token" });
+
+  patcher.apply();
+  const patched = JSON.parse(readFileSync(settingsPath, "utf8")) as {
+    hooks: { PostToolBatch: Array<{ hooks: Array<{ headers: Record<string, string> }> }> };
+  };
+  assert.equal(patched.hooks.PostToolBatch.length, 1);
+  assert.equal(patched.hooks.PostToolBatch[0].hooks[0].headers["x-ccproxy-hook-token"], "fresh-token");
+
+  patcher.restore();
+  const restored = JSON.parse(readFileSync(settingsPath, "utf8")) as { hooks?: Record<string, unknown> };
+  assert.equal(restored.hooks?.PostToolBatch, undefined);
+});
+
 test("ClaudeConfigPatcher re-patches Desktop gateway when ccswitch rewrites it (drift watch)", () => {
   const root = path.resolve("test-output", "desktop-patcher-drift");
   const configLibraryPath = path.join(root, "configLibrary");

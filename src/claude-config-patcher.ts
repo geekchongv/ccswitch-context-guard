@@ -618,9 +618,29 @@ export class ClaudeConfigPatcher {
     for (const eventName of HOOK_EVENTS) {
       const url = `${proxyBaseUrl}/hooks/${eventName.replace(/([a-z])([A-Z])/g, "$1-$2").toLowerCase()}`;
       const existing = Array.isArray(hooks[eventName]) ? [...hooks[eventName] as unknown[]] : [];
-      const alreadyPresent = existing.some((entry) => JSON.stringify(entry).includes(url));
-      if (!alreadyPresent) {
-        existing.push({
+      let refreshed = false;
+      const nextExisting = existing.map((entry) => {
+        if (!entry || typeof entry !== "object" || Array.isArray(entry)) return entry;
+        const typedEntry = entry as Record<string, unknown>;
+        if (!Array.isArray(typedEntry.hooks)) return entry;
+        const nextHookEntries = typedEntry.hooks.map((hook) => {
+          if (!hook || typeof hook !== "object" || Array.isArray(hook)) return hook;
+          const typedHook = hook as Record<string, unknown>;
+          if (typedHook.type !== "http" || typedHook.url !== url) return hook;
+          refreshed = true;
+          return {
+            ...typedHook,
+            headers: {
+              ...(typedHook.headers && typeof typedHook.headers === "object" ? typedHook.headers : {}),
+              "x-ccproxy-hook-token": token,
+            },
+          };
+        });
+        return { ...typedEntry, hooks: nextHookEntries };
+      });
+
+      if (!refreshed) {
+        nextExisting.push({
           matcher: "",
           hooks: [{
             type: "http",
@@ -629,9 +649,9 @@ export class ClaudeConfigPatcher {
             headers: { "x-ccproxy-hook-token": token },
           }],
         });
-        hooks[eventName] = existing;
-        urls.push(url);
       }
+      hooks[eventName] = nextExisting;
+      urls.push(url);
     }
 
     return { hooks, urls };

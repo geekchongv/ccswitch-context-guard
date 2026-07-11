@@ -156,8 +156,8 @@ Copy `config.example.json` → `config.json`. Key sections:
 ```json
 {
   "tokenPolicy": {
-    "compactThreshold": 180000,
-    "hardLimit": 200000,
+    "compactThreshold": 90000,
+    "hardLimit": 130000,
     "safetyMargin": 8000,
     "compactMode": "warn",
     "autoReduceMaxTokens": true,
@@ -183,9 +183,9 @@ Copy `config.example.json` → `config.json`. Key sections:
 }
 ```
 
-For a 200k context window, reserving 30k configures new Claude Code CLI processes to compact at about 85%. Existing user values for `CLAUDE_CODE_AUTO_COMPACT_WINDOW` and `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` are preserved. The hook observer records only session prefixes, tool-call fingerprints, output sizes, repeated-call counts, and truncation flags; it does not persist source or tool output content and does not block tools in v0.4.8.
+With the bundled 130k safety limit, reserving 30k configures new Claude Code CLI processes to compact at about 76%. Existing user values for `CLAUDE_CODE_AUTO_COMPACT_WINDOW` and `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` are preserved. The hook observer records only session prefixes, tool-call fingerprints, output sizes, repeated-call counts, and truncation flags; it does not persist source or tool output content.
 
-Agent requests containing `tools`, `tool_use`, or `tool_result` are never sent through generic proxy chunking or text-flattening compaction. When an Agent request reaches the configured threshold, CCProxy Agent keeps every `tool_use`, `tool_use_id`, message role, and message position while replacing only older `tool_result.content` values with explicit placeholders. The three most recent tool results are preserved by default. The same structural rescue is attempted once after an upstream context-limit error.
+Agent requests containing `tools`, `tool_use`, or `tool_result` are never sent through generic proxy chunking or text-flattening compaction. When an Agent request reaches the configured threshold, CCProxy Agent keeps every `tool_use`, `tool_use_id`, message role, and message position while replacing only older `tool_result.content` values with explicit placeholders. The three most recent tool results are preserved by default. After an upstream context-limit error, old results are cleared first; if that is insufficient, the newest oversized result keeps bounded head and tail evidence instead of being erased.
 
 </details>
 

@@ -9,6 +9,7 @@ export type JsonValue =
 export interface ServerConfig {
   host: string;
   port: number;
+  maxRequestBodyBytes?: number;
   /** 若为 true,配置端口被占用时自动递增探测可用端口(默认 true)。 */
   autoPort?: boolean;
 }

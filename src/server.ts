@@ -7,6 +7,12 @@ import { UpstreamClient } from "./upstream-client.js";
 import { DashboardStatus, renderDashboard, renderNotFound, serializeLogs } from "./dashboard.js";
 import { HookObserver } from "./hook-observer.js";
 
+class RequestBodyTooLargeError extends Error {
+  public constructor(public readonly maxBytes: number) {
+    super(`request body exceeds ${maxBytes} bytes`);
+  }
+}
+
 async function readRawBody(request: http.IncomingMessage, maxBytes = Number.POSITIVE_INFINITY): Promise<Buffer> {
   const chunks: Buffer[] = [];
   let totalBytes = 0;
@@ -15,7 +21,7 @@ async function readRawBody(request: http.IncomingMessage, maxBytes = Number.POSI
     const buffer = typeof chunk === "string" ? Buffer.from(chunk) : chunk;
     totalBytes += buffer.length;
     if (totalBytes > maxBytes) {
-      throw new Error(`request body exceeds ${maxBytes} bytes`);
+      throw new RequestBodyTooLargeError(maxBytes);
     }
     chunks.push(buffer);
   }
@@ -188,7 +194,10 @@ export function createServer(
         return;
       }
 
-      const rawBody = request.method === "GET" || request.method === "HEAD" ? Buffer.alloc(0) : await readRawBody(request);
+      const bodyLimit = Math.max(1_000_000, config.server.maxRequestBodyBytes ?? 64_000_000);
+      const rawBody = request.method === "GET" || request.method === "HEAD"
+        ? Buffer.alloc(0)
+        : await readRawBody(request, bodyLimit);
 
       if (request.method === "POST" && isJsonRequest(request) && isAiRoute(config, routePath)) {
         logger.debug("识别为AI请求，准备进入编排层", {
@@ -219,6 +228,13 @@ export function createServer(
     } catch (error) {
       if (request.method === "GET" && (request.url ?? "/").split("?")[0] === "/favicon.ico") {
         writeText(response, 404, renderNotFound("/favicon.ico"));
+        return;
+      }
+      if (error instanceof RequestBodyTooLargeError) {
+        writeJson(response, 413, {
+          error: "request body too large",
+          maxBytes: error.maxBytes,
+        });
         return;
       }
       logger.error("Request handling failed", {

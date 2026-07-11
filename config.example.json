@@ -2,7 +2,8 @@
   "server": {
     "host": "127.0.0.1",
     "port": 15722,
-    "autoPort": true
+    "autoPort": true,
+    "maxRequestBodyBytes": 64000000
   },
   "upstream": {
     "baseUrl": "http://127.0.0.1:15721",

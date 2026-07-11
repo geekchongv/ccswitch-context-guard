@@ -1,7 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { ChatCompletionRequest } from "./types.js";
-import { clearOldToolResults, CLEARED_TOOL_RESULT_TEXT } from "./tool-result-clearer.js";
+import {
+  clearOldToolResults,
+  CLEARED_TOOL_RESULT_TEXT,
+  truncateNewestToolResult,
+  TRUNCATED_TOOL_RESULT_MARKER,
+} from "./tool-result-clearer.js";
 
 function buildAgentRequest(resultSize = 20_000): ChatCompletionRequest {
   const messages: NonNullable<ChatCompletionRequest["messages"]> = [];
@@ -67,4 +72,18 @@ test("clearOldToolResults is a no-op below target or without clearable history",
   const keepAll = clearOldToolResults(request, 1, 6);
   assert.equal(keepAll.applied, false);
   assert.equal(keepAll.clearedResults, 0);
+});
+
+test("truncateNewestToolResult preserves bounded head and tail evidence", () => {
+  const request = buildAgentRequest(1_000);
+  const originalResults = toolParts(request, "tool_result");
+  const latestOriginal = String(originalResults.at(-1)?.content);
+  const result = truncateNewestToolResult(request, 3_000, 1_000);
+
+  assert.equal(result.applied, true);
+  assert.ok(result.afterInputTokens < result.beforeInputTokens);
+  const latest = String(toolParts(result.request, "tool_result").at(-1)?.content);
+  assert.ok(latest.includes(TRUNCATED_TOOL_RESULT_MARKER));
+  assert.ok(latest.includes(latestOriginal.slice(0, 200)));
+  assert.ok(latest.includes(latestOriginal.slice(-200)));
 });

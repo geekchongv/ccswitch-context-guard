@@ -9,7 +9,7 @@ import { buildChunkPlan, buildSynthesisRequest } from "./chunking.js";
 import { UpstreamClient } from "./upstream-client.js";
 import { appendCompactWarning } from "./response-warning.js";
 import { hasAgentToolProtocol } from "./agent-protocol.js";
-import { clearOldToolResults } from "./tool-result-clearer.js";
+import { clearOldToolResults, truncateNewestToolResult } from "./tool-result-clearer.js";
 
 interface MaxTokensAdjustment {
   request: ChatCompletionRequest;
@@ -109,6 +109,9 @@ function setRequestedOutputTokens(request: ChatCompletionRequest, value: number)
 function cloneHeaders(headers: Headers): Headers {
   const cloned = new Headers();
   headers.forEach((value, key) => cloned.set(key, value));
+  cloned.delete("content-length");
+  cloned.delete("content-encoding");
+  cloned.delete("transfer-encoding");
   return cloned;
 }
 
@@ -206,7 +209,7 @@ async function captureUpstreamUsage(response: Response): Promise<UpstreamUsage> 
     replayResponse: new Response(JSON.stringify(payload), {
       status: response.status,
       statusText: response.statusText,
-      headers: response.headers,
+      headers: cloneHeaders(response.headers),
     }),
   };
 }
@@ -244,6 +247,52 @@ export class Orchestrator {
     private readonly sessionStore: SessionStore,
   ) {
     this.upstreamClient = new UpstreamClient(config.upstream);
+  }
+
+  private async postStatelessWithContextRetry(
+    routePath: string,
+    request: ChatCompletionRequest,
+    upstreamHeaders: Record<string, string>,
+    requestId: string,
+    phase: string,
+  ): Promise<{ response: Response; retried: boolean }> {
+    const firstResponse = await this.upstreamClient.postJson(routePath, request, upstreamHeaders);
+    if (firstResponse.ok || !this.config.tokenPolicy.retryOnContextError) {
+      return { response: firstResponse, retried: false };
+    }
+
+    const inspected = await inspectContextLimitResponse(firstResponse);
+    if (!inspected.contextError.detected) {
+      return { response: inspected.replayResponse, retried: false };
+    }
+
+    let retryRequest = compactRequest(request);
+    const retryBudget = assessBudget(
+      retryRequest,
+      this.config.tokenPolicy.compactThreshold,
+      this.config.tokenPolicy.hardLimit,
+      this.config.tokenPolicy.responseReserve,
+      this.config.tokenPolicy.safetyMargin,
+    );
+    const adjustment = this.reduceMaxTokensIfNeeded(
+      retryRequest,
+      retryBudget,
+      "upstream_context_error",
+      inspected.contextError.contextLimit ?? this.config.tokenPolicy.hardLimit,
+    );
+    retryRequest = adjustment.request;
+    this.logger.warn("Retrying stateless phase after upstream context error", {
+      requestId,
+      routePath,
+      phase,
+      providerInputTokens: inspected.contextError.inputTokens,
+      providerContextLimit: inspected.contextError.contextLimit,
+      maxTokensReduced: adjustment.adjusted,
+    });
+    return {
+      response: await this.upstreamClient.postJson(routePath, retryRequest, upstreamHeaders),
+      retried: true,
+    };
   }
 
   public async handle(
@@ -479,7 +528,38 @@ export class Orchestrator {
       }
 
       const synthesisRequest = buildSynthesisRequest(workingRequest, chunkOutputs, chunkHardCap);
-      const synthesisResponse = await this.upstreamClient.postJson(routePath, synthesisRequest, upstreamHeaders);
+      const synthesisResult = await this.postStatelessWithContextRetry(
+        routePath,
+        synthesisRequest,
+        upstreamHeaders,
+        requestId,
+        "chunk_synthesis",
+      );
+      const synthesisResponse = synthesisResult.response;
+      retriedAfterContextError ||= synthesisResult.retried;
+      if (!synthesisResponse.ok) {
+        const { replayResponse, bodyPreview } = await captureUpstreamError(synthesisResponse);
+        this.logger.error("Chunk synthesis failed", {
+          requestId,
+          routePath,
+          status: synthesisResponse.status,
+          retriedAfterContextError: synthesisResult.retried,
+          upstreamBody: bodyPreview,
+        });
+        this.saveRecord({
+          requestId,
+          timestamp,
+          routePath,
+          budget,
+          compacted,
+          compactWarning,
+          chunked,
+          maxTokensReduced,
+          retriedAfterContextError,
+          vision: withVision.vision,
+        });
+        return replayResponse;
+      }
       const synthesisUsage = await captureUpstreamUsage(synthesisResponse);
 
       this.logger.info("请求完成", {
@@ -568,10 +648,8 @@ export class Orchestrator {
             });
           }
         } else {
-          // 救援路径：上游已经返回 400 上下文超限，此时不能再保护最近的 tool result。
-          // keepRecent=policy 会把最大的那条近期结果（常是超长 tool output）挡在外面，
-          // 导致清理只削掉零碎小结果、真实 token 几乎不动。这里强制 keepRecent=0，
-          // 并把目标压到估算值的一半以下，确保循环能触达并清掉那条巨型结果。
+          // Rescue in two stages: clear older results first, then preserve bounded
+          // head/tail evidence from the newest result instead of erasing it.
           const policy = resolveToolResultPolicy(this.config);
           const configuredTarget = policy.target;
           const currentInputTokens = estimateRequestTokens(workingRequest, 0).inputTokens;
@@ -591,14 +669,24 @@ export class Orchestrator {
               Math.floor(currentInputTokens * 0.5),
             ),
           );
-          const clearing = (this.config.tokenPolicy.toolResultClearingEnabled ?? true)
-            ? clearOldToolResults(workingRequest, rescueTarget, 0)
+          const clearingEnabled = this.config.tokenPolicy.toolResultClearingEnabled ?? true;
+          const oldClearing = clearingEnabled
+            ? clearOldToolResults(workingRequest, rescueTarget, 1)
             : null;
-          if (clearing?.applied) {
-            workingRequest = clearing.request;
+          let rescuedRequest = oldClearing?.request ?? workingRequest;
+          const latestTruncation = clearingEnabled && estimateRequestTokens(rescuedRequest, 0).inputTokens > rescueTarget
+            ? truncateNewestToolResult(rescuedRequest, rescueTarget)
+            : null;
+          if (latestTruncation?.applied) {
+            rescuedRequest = latestTruncation.request;
+          }
+
+          if (oldClearing?.applied || latestTruncation?.applied) {
+            workingRequest = rescuedRequest;
             toolResultRescueApplied = true;
-            toolResultsCleared += clearing.clearedResults;
-            toolResultTokensCleared += clearing.estimatedTokensCleared;
+            toolResultsCleared += (oldClearing?.clearedResults ?? 0) + (latestTruncation?.clearedResults ?? 0);
+            toolResultTokensCleared +=
+              (oldClearing?.estimatedTokensCleared ?? 0) + (latestTruncation?.estimatedTokensCleared ?? 0);
             budget = assessBudget(
               workingRequest,
               this.config.tokenPolicy.compactThreshold,
@@ -610,13 +698,15 @@ export class Orchestrator {
               requestId,
               routePath,
               reason: "upstream_context_error",
-              clearedResults: clearing.clearedResults,
-              estimatedTokensCleared: clearing.estimatedTokensCleared,
-              beforeInputTokens: clearing.beforeInputTokens,
-              afterInputTokens: clearing.afterInputTokens,
+              clearedOldResults: oldClearing?.clearedResults ?? 0,
+              truncatedNewestResult: latestTruncation?.applied ?? false,
+              estimatedTokensCleared:
+                (oldClearing?.estimatedTokensCleared ?? 0) + (latestTruncation?.estimatedTokensCleared ?? 0),
+              beforeInputTokens: oldClearing?.beforeInputTokens ?? latestTruncation?.beforeInputTokens,
+              afterInputTokens: latestTruncation?.afterInputTokens ?? oldClearing?.afterInputTokens,
               providerInputTokens: inspected.contextError.inputTokens,
               providerContextLimit: inspected.contextError.contextLimit,
-              keepRecent: 0,
+              keepRecent: 1,
               targetInputTokens: rescueTarget,
               undercountRatio: Number(undercountRatio.toFixed(3)),
             });
@@ -693,10 +783,14 @@ export class Orchestrator {
     }
 
     if (compactWarning) {
-      response = await appendCompactWarning(response, this.config.tokenPolicy.compactWarningText);
-      this.logger.warn("已在模型输出末尾追加compact提醒", {
+      const warningResult = await appendCompactWarning(response, this.config.tokenPolicy.compactWarningText);
+      response = warningResult.response;
+      this.logger.warn(warningResult.appended
+        ? "已在模型输出末尾追加compact提醒"
+        : "compact提醒未能写入当前响应格式", {
         requestId,
         routePath,
+        appended: warningResult.appended,
       });
     }
 
