@@ -189,8 +189,8 @@ test("orchestrator replays the 198977 plus 1024 context error with structural to
     const retryUses = requestToolParts(received[1], "tool_use");
     const retryResults = requestToolParts(received[1], "tool_result");
     assert.deepEqual(retryUses.map((part) => part.id), retryResults.map((part) => part.tool_use_id));
-    assert.equal(retryResults.slice(0, 4).every((part) => String(part.content).includes("cleared by CCProxy Agent")), true);
-    assert.equal(retryResults.slice(-2).every((part) => String(part.content).startsWith("tool-output-")), true);
+    // 救援路径强制 keepRecent=0：上游已经 400，任何 tool result（包括最近的）都可能超限，全部清空。
+    assert.equal(retryResults.every((part) => String(part.content).includes("cleared by CCProxy Agent")), true);
     assert.equal(received[1]?.max_tokens, 1024);
   } finally {
     upstream.close();

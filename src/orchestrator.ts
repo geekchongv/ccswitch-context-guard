@@ -172,6 +172,69 @@ async function captureUpstreamError(
   };
 }
 
+interface UpstreamUsage {
+  inputTokens?: number;
+  outputTokens?: number;
+  replayResponse: Response;
+}
+
+/**
+ * 消费成功响应 body，提取上游报告的 usage token 计数，重建一个可重新读取的 Response 返回。
+ * 用于和代理本地估算值对照，定位"代理估算 vs 上游实际"的差距来源。
+ * SSE 流 / 非 JSON / 解析失败时原样返回，inputTokens 留 undefined。
+ */
+async function captureUpstreamUsage(response: Response): Promise<UpstreamUsage> {
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!response.ok || !contentType.includes("application/json") || contentType.includes("text/event-stream")) {
+    return { replayResponse: response };
+  }
+
+  let payload: Record<string, unknown>;
+  try {
+    payload = (await response.json()) as Record<string, unknown>;
+  } catch {
+    return { replayResponse: response };
+  }
+
+  const usage = payload.usage as Record<string, unknown> | undefined;
+  const inputTokens = usage?.input_tokens ?? usage?.prompt_tokens;
+  const outputTokens = usage?.output_tokens ?? usage?.completion_tokens;
+
+  return {
+    inputTokens: typeof inputTokens === "number" ? inputTokens : undefined,
+    outputTokens: typeof outputTokens === "number" ? outputTokens : undefined,
+    replayResponse: new Response(JSON.stringify(payload), {
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+    }),
+  };
+}
+
+/**
+ * 收集请求过程中的非默认 flag/计数器，仅在出现非默认值时才纳入。
+ * 成功路径日志默认只打 token 对照，避免每次都拖着全 false 的噪声字段。
+ */
+function collectRequestFlags(flags: {
+  compacted: boolean;
+  compactWarning: boolean;
+  chunked: boolean;
+  maxTokensReduced: boolean;
+  visionUsed: boolean;
+  toolResultsCleared: number;
+  toolResultTokensCleared: number;
+}): Record<string, unknown> {
+  const active: Record<string, unknown> = {};
+  if (flags.compacted) active.compacted = true;
+  if (flags.compactWarning) active.compactWarning = true;
+  if (flags.chunked) active.chunked = true;
+  if (flags.maxTokensReduced) active.maxTokensReduced = true;
+  if (flags.visionUsed) active.visionUsed = true;
+  if (flags.toolResultsCleared > 0) active.toolResultsCleared = flags.toolResultsCleared;
+  if (flags.toolResultTokensCleared > 0) active.toolResultTokensCleared = flags.toolResultTokensCleared;
+  return active;
+}
+
 export class Orchestrator {
   private readonly upstreamClient: UpstreamClient;
 
@@ -417,14 +480,24 @@ export class Orchestrator {
 
       const synthesisRequest = buildSynthesisRequest(workingRequest, chunkOutputs, chunkHardCap);
       const synthesisResponse = await this.upstreamClient.postJson(routePath, synthesisRequest, upstreamHeaders);
+      const synthesisUsage = await captureUpstreamUsage(synthesisResponse);
 
       this.logger.info("请求完成", {
         requestId,
         routePath,
         status: synthesisResponse.status,
-        chunked,
-        visionUsed: withVision.vision.used,
-        inputTokens: budget.estimate.inputTokens,
+        proxyInputTokens: budget.estimate.inputTokens,
+        upstreamInputTokens: synthesisUsage.inputTokens,
+        upstreamOutputTokens: synthesisUsage.outputTokens,
+        ...collectRequestFlags({
+          compacted,
+          compactWarning,
+          chunked,
+          maxTokensReduced,
+          visionUsed: withVision.vision.used,
+          toolResultsCleared,
+          toolResultTokensCleared,
+        }),
       });
 
       this.saveRecord({
@@ -440,7 +513,7 @@ export class Orchestrator {
         vision: withVision.vision,
       });
 
-      return synthesisResponse;
+      return synthesisUsage.replayResponse;
     }
 
     if (budget.decision === "chunk_required" && agentToolProtocol) {
@@ -495,13 +568,31 @@ export class Orchestrator {
             });
           }
         } else {
+          // 救援路径：上游已经返回 400 上下文超限，此时不能再保护最近的 tool result。
+          // keepRecent=policy 会把最大的那条近期结果（常是超长 tool output）挡在外面，
+          // 导致清理只削掉零碎小结果、真实 token 几乎不动。这里强制 keepRecent=0，
+          // 并把目标压到估算值的一半以下，确保循环能触达并清掉那条巨型结果。
           const policy = resolveToolResultPolicy(this.config);
           const configuredTarget = policy.target;
-          const keepRecent = policy.keepRecent;
           const currentInputTokens = estimateRequestTokens(workingRequest, 0).inputTokens;
-          const target = Math.min(configuredTarget, Math.max(1, Math.floor(currentInputTokens * 0.75)));
+          const providerInputTokens = inspected.contextError.inputTokens ?? currentInputTokens;
+          const providerContextLimit = inspected.contextError.contextLimit ?? this.config.tokenPolicy.hardLimit;
+          const undercountRatio = providerInputTokens > 0 ? currentInputTokens / providerInputTokens : 1;
+          const desiredProviderInput = Math.max(
+            1,
+            providerContextLimit - this.config.tokenPolicy.responseReserve - this.config.tokenPolicy.safetyMargin,
+          );
+          const providerTokensToCut = Math.max(0, providerInputTokens - desiredProviderInput);
+          const rescueTarget = Math.max(
+            1,
+            Math.min(
+              configuredTarget,
+              Math.floor(currentInputTokens - providerTokensToCut * undercountRatio),
+              Math.floor(currentInputTokens * 0.5),
+            ),
+          );
           const clearing = (this.config.tokenPolicy.toolResultClearingEnabled ?? true)
-            ? clearOldToolResults(workingRequest, target, keepRecent)
+            ? clearOldToolResults(workingRequest, rescueTarget, 0)
             : null;
           if (clearing?.applied) {
             workingRequest = clearing.request;
@@ -525,8 +616,9 @@ export class Orchestrator {
               afterInputTokens: clearing.afterInputTokens,
               providerInputTokens: inspected.contextError.inputTokens,
               providerContextLimit: inspected.contextError.contextLimit,
-              keepRecent,
-              targetInputTokens: target,
+              keepRecent: 0,
+              targetInputTokens: rescueTarget,
+              undercountRatio: Number(undercountRatio.toFixed(3)),
             });
           } else {
             this.logger.warn("Preserved Agent tool protocol after upstream context error", {
@@ -556,6 +648,7 @@ export class Orchestrator {
           status: response.status,
           contextLimit: inspected.contextError.contextLimit,
           inputTokens: inspected.contextError.inputTokens,
+          upstreamBody: inspected.contextError.message.slice(0, 500),
           canRetry: retryAdjustment.adjusted || toolResultRescueApplied,
         });
 
@@ -585,12 +678,17 @@ export class Orchestrator {
         requestId,
         routePath,
         status: response.status,
-        chunked,
-        visionUsed: withVision.vision.used,
-        inputTokens: budget.estimate.inputTokens,
-        toolResultsCleared,
-        toolResultTokensCleared,
+        proxyInputTokens: budget.estimate.inputTokens,
         upstreamBody: bodyPreview,
+        ...collectRequestFlags({
+          compacted,
+          compactWarning,
+          chunked,
+          maxTokensReduced,
+          visionUsed: withVision.vision.used,
+          toolResultsCleared,
+          toolResultTokensCleared,
+        }),
       });
     }
 
@@ -603,18 +701,24 @@ export class Orchestrator {
     }
 
     if (response.ok) {
+      const usage = await captureUpstreamUsage(response);
+      response = usage.replayResponse;
       this.logger.info("请求完成", {
         requestId,
         routePath,
         status: response.status,
-        compacted,
-        compactWarning,
-        chunked,
-        maxTokensReduced,
-        visionUsed: withVision.vision.used,
-        inputTokens: budget.estimate.inputTokens,
-        toolResultsCleared,
-        toolResultTokensCleared,
+        proxyInputTokens: budget.estimate.inputTokens,
+        upstreamInputTokens: usage.inputTokens,
+        upstreamOutputTokens: usage.outputTokens,
+        ...collectRequestFlags({
+          compacted,
+          compactWarning,
+          chunked,
+          maxTokensReduced,
+          visionUsed: withVision.vision.used,
+          toolResultsCleared,
+          toolResultTokensCleared,
+        }),
       });
     }
 
