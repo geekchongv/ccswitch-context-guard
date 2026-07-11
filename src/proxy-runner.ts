@@ -13,7 +13,7 @@ import { DashboardStatus } from "./dashboard.js";
 import { HookObserver } from "./hook-observer.js";
 
 const MAX_PORT_TRIES = 100;
-const VERSION = "0.4.9";
+const VERSION = "0.4.91";
 
 export type ProxyStatus = DashboardStatus;
 
