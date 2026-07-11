@@ -2,7 +2,9 @@
 
 ## Supported Versions
 
-Only the latest release is actively maintained.
+Only the latest release is actively maintained. Use `v0.4.93` or newer.
+
+The `v0.4.91` executable was withdrawn because the old packaging path could include a maintainer's local `config.json`. Release builds now exclude private config files, generate a secret-free config on first startup, and fail packaging if configured secret bytes are detected.
 
 ## Reporting A Vulnerability
 
@@ -22,3 +24,5 @@ Do not publish:
 - packaged personal builds
 - Claude settings files
 - provider tokens or API keys
+
+If you used an affected personal build, delete it and rotate any credential that may have been stored in its adjacent `config.json`.

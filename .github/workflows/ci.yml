@@ -1,5 +1,8 @@
 name: CI
 
+permissions:
+  contents: read
+
 on:
   push:
     branches: [main]
@@ -28,3 +31,28 @@ jobs:
 
       - name: Test
         run: npm test
+
+      - name: Validate GUI references
+        run: npm run check:gui
+
+      - name: Create packaging secret sentinel
+        shell: pwsh
+        run: |
+          '{"vision":{"apiKey":"CCPROXY_CI_SECRET_SENTINEL_7f36d1"}}' | Set-Content -Encoding utf8 config.json
+          "CCPROXY_SECRET_SENTINEL=CCPROXY_CI_SECRET_SENTINEL_7f36d1" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Build sanitized portable package
+        run: npm run package:gui
+
+      - name: Packaged context-rescue smoke test
+        run: npm run smoke:packaged
+
+      - name: Upload verified portable artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: CCProxy-Agent-${{ github.sha }}
+          path: |
+            release-gui-v*/CCProxy-Agent-v*.exe
+            release-gui-v*/SHA256SUMS.txt
+            release-gui-v*/config.example.json
+          if-no-files-found: error

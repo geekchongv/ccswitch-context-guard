@@ -4,15 +4,15 @@
 
 **The local guardrail that stops Claude Code from blowing past its context window.**
 
-A transparent safety proxy that sits between Claude CLI / Claude Desktop and [ccswitch](https://github.com/geekchongv/ccswitch-context-guard) — auto-managing token budgets, retrying context-limit errors, and routing multimodal inputs.
+A transparent safety proxy that sits between Claude Code / Claude Desktop and [CC Switch](https://github.com/farion1231/cc-switch) — protecting tool protocol, managing token budgets, retrying context-limit errors once, and routing multimodal inputs.
 
 </div>
 
 <p align="center">
   <img alt="CI" src="https://img.shields.io/github/actions/workflow/status/geekchongv/ccswitch-context-guard/ci.yml?branch=main&label=CI&style=flat-square">
-  <img alt="version" src="https://img.shields.io/badge/version-v0.4.5-2ea44f?style=flat-square">
+  <img alt="version" src="https://img.shields.io/badge/version-v0.4.93-2ea44f?style=flat-square">
   <img alt="release" src="https://img.shields.io/github/v/release/geekchongv/ccswitch-context-guard?style=flat-square&color=blue">
-  <img alt="platform" src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blue?style=flat-square">
+  <img alt="platform" src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-blue?style=flat-square">
   <img alt="language" src="https://img.shields.io/badge/lang-TypeScript-3178c6?style=flat-square">
   <img alt="license" src="https://img.shields.io/github/license/geekchongv/ccswitch-context-guard?style=flat-square">
   <img alt="stars" src="https://img.shields.io/github/stars/geekchongv/ccswitch-context-guard?style=flat-square&color=ff69b4">
@@ -81,6 +81,7 @@ The proxy intercepts `/v1/messages` and `/v1/chat/completions`, applies guardrai
 |---|---|---|
 | 🧠 | **Auto token budgeting** | Reduces `max_tokens` before forwarding so `input + output` never exceeds the context limit |
 | 🔁 | **One-shot retry** | Parses upstream context-limit `400` errors and retries with a safer output budget |
+| 🧰 | **Agent protocol rescue** | Clears old tool results and preserves bounded head/tail evidence from the newest result without breaking tool IDs |
 | 🪧 | **Compact reminder** | Appends a `/compact` hint to responses when the session nears the threshold |
 | 🖼️ | **Vision summarization** | Routes Claude Desktop images through vision models, injects `[VISION SUMMARY]` for text-only downstreams like GLM-5.2 |
 | 🧩 | **Fallback chunking** | Splits requests that remain too large after budgeting |
@@ -94,15 +95,24 @@ The proxy intercepts `/v1/messages` and `/v1/chat/completions`, applies guardrai
 
 ## 🚀 Quick Start
 
+### Windows portable app
+
+1. Download `CCProxy-Agent-v0.4.93.exe` from the [latest GitHub Release](https://github.com/geekchongv/ccswitch-context-guard/releases/latest).
+2. Run the EXE. On first startup it creates a secret-free `config.json` beside the executable.
+3. Configure CC Switch and optional Vision settings in the desktop UI.
+
+The release also includes `config.example.json` and `SHA256SUMS.txt`. Private `config.json` files are never included in release artifacts.
+
+### From source
+
 ```bash
 git clone https://github.com/geekchongv/ccswitch-context-guard.git
 cd ccswitch-context-guard
 npm install
-cp config.example.json config.json
 npm run dev
 ```
 
-That's it. The proxy starts on `http://127.0.0.1:15722`. The local dashboard remains available at that URL, but it no longer opens a browser automatically by default.
+The first source startup also creates `config.json` when it is missing. The proxy starts on `http://127.0.0.1:15722` and the local dashboard remains available at that URL.
 
 **Health check:**
 
@@ -111,14 +121,6 @@ curl http://127.0.0.1:15722/health
 ```
 
 > 💡 If you open the optional dashboard manually, its **Stop** button closes cleanly and restores patched Claude settings before exit.
-
-### Prefer a packaged exe?
-
-Grab the latest release, drop in your `config.json`, and run:
-
-```text
-CCProxy-Agent-v0.4.2.exe
-```
 
 ## ⚙️ How It Works
 
@@ -244,17 +246,17 @@ Written to `logs/ccproxy-agent.log`. Useful Chinese log lines:
 npm run check      # typecheck
 npm test           # run test suite
 npm run build      # compile TS → dist
-npm run package:exe   # build portable Windows exe → release/
+npm run check:gui  # validate desktop UI references
+npm run package:gui   # build sanitized portable Windows EXE
+npm run smoke:packaged # run the real packaged context-rescue smoke test
 ```
 
 ## 📚 Documentation
 
 - 📐 [Design](docs/design.md)
 - ✅ [Validation](docs/validation.md)
-- 📦 [v0.4.2 Release Notes](docs/ccproxy-agent-v0.4.2-release.md)
-- 📦 [v0.4 Release Notes](docs/ccproxy-agent-v0.4-release.md)
-- 📦 [v0.3 Release Notes](docs/ccproxy-agent-v0.3-release.md)
-- 📦 [v0.2 Release Notes](docs/ccproxy-agent-v0.2-release.md)
+- 📚 [Architecture and Operations Wiki](https://github.com/geekchongv/ccswitch-context-guard/wiki)
+- 📦 [Latest Release](https://github.com/geekchongv/ccswitch-context-guard/releases/latest)
 - 📝 [Full Changelog](CHANGELOG.md)
 
 ## 🔒 Security & Privacy
@@ -262,7 +264,8 @@ npm run package:exe   # build portable Windows exe → release/
 CCProxy Agent is a **local** proxy — it can see prompts/responses passing through it, but by default everything stays on your machine.
 
 - ✅ Logs and session snapshots are local-only
-- ✅ Vision API keys come from env vars, never `config.json`
+- ✅ Release builds reject private `config.json` files and configured secret bytes
+- ✅ Vision API keys should use `CCPROXY_VISION_API_KEY`
 - 🚫 **Never commit** your `config.json`, `runtime/`, `logs/`, or personal builds
 
 See [SECURITY.md](SECURITY.md) for details.
@@ -271,12 +274,14 @@ See [SECURITY.md](SECURITY.md) for details.
 
 - Token counting before upstream is **heuristic**, not provider-native
 - Claude Code CLI native auto-compact settings apply to newly started CLI processes
-- Tool-loop hooks are observe-only in v0.4.8 and require a Claude Code version with HTTP hook support
+- Tool-loop hooks are observe-only and require a Claude Code version with HTTP hook support
 - Claude Desktop does not expose the same CLI hook lifecycle and receives base proxy protection only
-- Agent context editing clears only old tool-result bodies; it never summarizes or flattens tool protocol messages
-- Multimodal routing is a planned path, disabled by default beyond summarization
+- Agent rescue preserves protocol structure but cannot guarantee lossless recovery after the provider hard limit is exceeded
+- Multimodal summarization requires explicit configuration and a Vision API key
+- Compact reminders on SSE responses are currently buffered before rewriting
 - Chunking is a fallback, not a full long-task planning engine
-- Primarily tested on **Windows**
+- Configuration restart is not yet transactional; invalid settings can leave the proxy stopped until corrected
+- The portable desktop release is **Windows-first**; macOS and Linux binaries are not currently published
 
 ---
 

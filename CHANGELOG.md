@@ -1,5 +1,28 @@
 # Changelog
 
+## v0.4.93
+
+- Removed private `config.json` from every package path and added first-start generation of a secret-free local config.
+- Added release artifact scanning that rejects private config files and configured secret bytes.
+- Added SHA256 generation, verified packaged smoke testing, and tag-driven GitHub Release automation.
+- Added Windows GUI packaging and real EXE smoke coverage to CI.
+- Added Issue Forms, a pull request template, Code of Conduct, support guide, and Dependabot configuration.
+- Updated README platform claims, installation steps, version references, architecture links, and current limitations.
+
+## v0.4.92
+
+- Changed Agent context rescue to clear old results first and preserve bounded head/tail evidence from the newest result.
+- Fixed stale response entity headers after JSON replay and warning injection.
+- Added Anthropic and OpenAI SSE compact warning support.
+- Added request body limits, stale Hook token refresh, synthesis context retry, and packaged temp cleanup.
+- Added regression tests for response replay, SSE warnings, Hook recovery, request limits, and tool-result truncation.
+
+## v0.4.91
+
+- Calibrated default token thresholds for provider/local estimator differences.
+- Added provider usage comparison and upstream error body diagnostics.
+- Added Desktop gateway drift monitoring and Agent protocol rescue.
+
 ## v0.4.5
 
 - Closed the remaining chunking overflow path: final synthesis requests no longer re-inject the full original `messages` JSON after chunk execution.

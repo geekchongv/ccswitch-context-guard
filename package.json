@@ -1,7 +1,7 @@
 {
   "name": "ccproxy-agent",
-  "version": "0.4.92",
-  "description": "A local orchestration proxy above ccswitch for compaction, token budgeting, and multimodal routing.",
+  "version": "0.4.93",
+  "description": "A Windows local context-protection gateway for Claude Code and Claude Desktop behind CC Switch.",
   "type": "module",
   "main": "dist/electron-main.js",
   "bin": {
@@ -16,6 +16,7 @@
     "start": "node dist/index.js",
     "check": "tsc --noEmit -p tsconfig.json",
     "check:gui": "node scripts/validate-gui-refs.mjs",
+    "check:package-secrets": "node scripts/validate-package-secrets.mjs",
     "smoke:packaged": "node scripts/smoke-packaged-rescue.mjs",
     "probe": "tsx src/probe.ts",
     "test": "tsx --test src/**/*.test.ts",
@@ -37,16 +38,18 @@
     "url": "https://github.com/geekchongv/ccswitch-context-guard/issues"
   },
   "homepage": "https://github.com/geekchongv/ccswitch-context-guard#readme",
-  "author": "",
+  "author": "geekchongv",
   "license": "MIT",
   "pkg": {
     "scripts": [
       "build/pkg/**/*.cjs"
     ],
     "assets": [
-      "config.json",
       "config.example.json",
       "README.md",
+      "LICENSE",
+      "CHANGELOG.md",
+      "SECURITY.md",
       "docs/**/*"
     ]
   },
@@ -66,9 +69,11 @@
     },
     "files": [
       "dist/**/*",
-      "config.json",
       "config.example.json",
       "README.md",
+      "LICENSE",
+      "CHANGELOG.md",
+      "SECURITY.md",
       "docs/**/*",
       "package.json"
     ],

@@ -1,0 +1,64 @@
+name: Bug report
+description: Report a reproducible CCProxy Agent problem
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Please redact API keys, authorization headers, private prompts, and source code from logs.
+  - type: input
+    id: version
+    attributes:
+      label: CCProxy Agent version
+      placeholder: v0.4.93
+    validations:
+      required: true
+  - type: dropdown
+    id: client
+    attributes:
+      label: Client
+      options:
+        - Claude Code
+        - Claude Desktop
+        - Both
+        - Other compatible client
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Windows version, model/provider, and CC Switch version if known
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      placeholder: Numbered steps that reproduce the problem
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Redacted logs
+      render: text
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety check
+      options:
+        - label: I removed API keys, tokens, private prompts, and proprietary source code.
+          required: true

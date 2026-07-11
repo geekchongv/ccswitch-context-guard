@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation and troubleshooting
+    url: https://github.com/geekchongv/ccswitch-context-guard/wiki
+    about: Read architecture, configuration, operations, and troubleshooting guides.
+  - name: Security vulnerability
+    url: https://github.com/geekchongv/ccswitch-context-guard/security/advisories/new
+    about: Report vulnerabilities privately. Do not open a public issue.

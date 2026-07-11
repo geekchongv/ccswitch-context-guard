@@ -1,0 +1,58 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate source and tests
+        run: |
+          npm run check
+          npm test
+          npm run check:gui
+
+      - name: Create packaging secret sentinel
+        shell: pwsh
+        run: |
+          '{"vision":{"apiKey":"CCPROXY_RELEASE_SECRET_SENTINEL_02a48c"}}' | Set-Content -Encoding utf8 config.json
+          "CCPROXY_SECRET_SENTINEL=CCPROXY_RELEASE_SECRET_SENTINEL_02a48c" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Build and verify portable package
+        run: |
+          npm run package:gui
+          npm run smoke:packaged
+
+      - name: Publish GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $dir = "release-gui-v$version"
+          gh release create "v$version" `
+            "$dir/CCProxy-Agent-v$version.exe" `
+            "$dir/SHA256SUMS.txt" `
+            "$dir/config.example.json" `
+            --title "CCProxy Agent v$version" `
+            --notes-file "docs/ccproxy-agent-v$version-release.md" `
+            --verify-tag

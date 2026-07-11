@@ -29,7 +29,7 @@ This project is an independent community effort. Every bug report, feature idea,
 
 Be kind. Be patient. Assume good intent. Disagree on ideas, not people.
 
-We follow the spirit of the [Contributor Covenant](https://www.contributor-covenant.org/version/2/1/code_of_conduct/). Trolling, harassment, or personal attacks are not tolerated.
+See [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md). Trolling, harassment, publication of private information, or personal attacks are not tolerated.
 
 ---
 

@@ -75,6 +75,10 @@ const defaultConfig: AppConfig = {
   },
 };
 
+function createDefaultConfig(): AppConfig {
+  return structuredClone(defaultConfig);
+}
+
 export function mergeConfig(base: AppConfig, override: Partial<AppConfig>): AppConfig {
   return {
     ...base,
@@ -102,12 +106,15 @@ export function loadConfig(): AppConfig {
   const baseDirectory = getBaseDirectory();
   const configPath = getConfigPath();
 
-  let config = defaultConfig;
+  let config = createDefaultConfig();
 
   if (existsSync(configPath)) {
     const raw = readFileSync(configPath, "utf8");
     const parsed = JSON.parse(raw) as Partial<AppConfig>;
     config = mergeConfig(defaultConfig, parsed);
+  } else {
+    mkdirSync(path.dirname(configPath), { recursive: true });
+    writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
   }
 
   mkdirSync(path.resolve(baseDirectory, config.logging.directory), { recursive: true });
