@@ -1,17 +1,34 @@
 import { BudgetAssessment, ChatCompletionRequest, TokenEstimate } from "./types.js";
-import { countMessageTokens } from "./token-counter.js";
+import { countMessageTokens, countStructuredTokens } from "./token-counter.js";
+
+const PROMPT_BEARING_FIELDS = [
+  "system",
+  "tools",
+  "tool_choice",
+  "functions",
+  "function_call",
+  "thinking",
+  "response_format",
+] as const;
 
 export function estimateRequestTokens(request: ChatCompletionRequest, responseReserve: number): TokenEstimate {
   const messages = request.messages ?? [];
   const messageTokens = messages.reduce((sum, message) => sum + countMessageTokens(message), 0);
-  const wrapperTokens = 250 + messages.length * 12;
+  let presentTopLevelFields = 0;
+  const topLevelTokens = PROMPT_BEARING_FIELDS.reduce((sum, field) => {
+    const value = request[field];
+    if (value === undefined) return sum;
+    presentTopLevelFields += 1;
+    return sum + countStructuredTokens(value);
+  }, 0);
+  const wrapperTokens = 250 + messages.length * 12 + presentTopLevelFields * 4;
   const expectedOutputTokens =
     request.max_completion_tokens ?? request.max_tokens ?? responseReserve;
 
   return {
-    inputTokens: messageTokens + wrapperTokens,
+    inputTokens: messageTokens + topLevelTokens + wrapperTokens,
     expectedOutputTokens,
-    totalTokens: messageTokens + wrapperTokens + expectedOutputTokens,
+    totalTokens: messageTokens + topLevelTokens + wrapperTokens + expectedOutputTokens,
   };
 }
 

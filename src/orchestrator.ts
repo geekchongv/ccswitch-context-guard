@@ -8,6 +8,8 @@ import { enrichRequestWithVision, hasImageInput } from "./modality-router.js";
 import { buildChunkPlan, buildSynthesisRequest } from "./chunking.js";
 import { UpstreamClient } from "./upstream-client.js";
 import { appendCompactWarning } from "./response-warning.js";
+import { hasAgentToolProtocol } from "./agent-protocol.js";
+import { clearOldToolResults } from "./tool-result-clearer.js";
 
 interface MaxTokensAdjustment {
   request: ChatCompletionRequest;
@@ -26,6 +28,27 @@ interface ContextLimitError {
 }
 
 const PROVIDER_CONTEXT_RETRY_TOKEN_BUFFER = 256;
+
+function resolveToolResultPolicy(config: AppConfig): { trigger: number; target: number; keepRecent: number } {
+  const maximumTrigger = Math.max(
+    1,
+    config.tokenPolicy.hardLimit - config.tokenPolicy.safetyMargin - config.tokenPolicy.minOutputTokens,
+  );
+  const trigger = Math.max(
+    1,
+    Math.min(config.tokenPolicy.toolResultClearTrigger ?? 170_000, maximumTrigger),
+  );
+  const targetGap = Math.max(1000, config.tokenPolicy.responseReserve);
+  const target = Math.max(
+    1,
+    Math.min(config.tokenPolicy.toolResultClearTarget ?? 150_000, trigger - targetGap),
+  );
+  return {
+    trigger,
+    target,
+    keepRecent: Math.max(0, Math.floor(config.tokenPolicy.toolResultKeepRecent ?? 3)),
+  };
+}
 
 function extractAssistantText(payload: Record<string, unknown>): string {
   if (typeof payload.content === "string") {
@@ -172,11 +195,41 @@ export class Orchestrator {
 
     const withVision = await enrichRequestWithVision(request, this.config.vision);
     let workingRequest = withVision.request;
+    const agentToolProtocol = hasAgentToolProtocol(workingRequest);
     let compacted = false;
     let compactWarning = false;
     let chunked = false;
     let maxTokensReduced = false;
     let retriedAfterContextError = false;
+    let toolResultsCleared = 0;
+    let toolResultTokensCleared = 0;
+
+    if (agentToolProtocol && (this.config.tokenPolicy.toolResultClearingEnabled ?? true)) {
+      const { trigger, target, keepRecent } = resolveToolResultPolicy(this.config);
+      const inputTokens = estimateRequestTokens(
+        workingRequest,
+        this.config.tokenPolicy.responseReserve,
+      ).inputTokens;
+      if (inputTokens >= trigger) {
+        const clearing = clearOldToolResults(workingRequest, target, keepRecent);
+        if (clearing.applied) {
+          workingRequest = clearing.request;
+          toolResultsCleared += clearing.clearedResults;
+          toolResultTokensCleared += clearing.estimatedTokensCleared;
+          this.logger.warn("Cleared old Agent tool results before forwarding", {
+            requestId,
+            routePath,
+            reason: "proactive_threshold",
+            clearedResults: clearing.clearedResults,
+            estimatedTokensCleared: clearing.estimatedTokensCleared,
+            beforeInputTokens: clearing.beforeInputTokens,
+            afterInputTokens: clearing.afterInputTokens,
+            keepRecent,
+            targetInputTokens: target,
+          });
+        }
+      }
+    }
 
     let budget = assessBudget(
       workingRequest,
@@ -236,7 +289,14 @@ export class Orchestrator {
     }
 
     if (budget.decision === "compact_required") {
-      if (this.config.tokenPolicy.compactMode === "proxy") {
+      if (agentToolProtocol) {
+        this.logger.warn("Agent tool session deferred to Claude native compact", {
+          requestId,
+          routePath,
+          totalTokens: budget.estimate.totalTokens,
+          compactThreshold: this.config.tokenPolicy.compactThreshold,
+        });
+      } else if (this.config.tokenPolicy.compactMode === "proxy") {
         const beforeCompactTokens = budget.estimate.totalTokens;
         workingRequest = compactRequest(workingRequest);
         compacted = true;
@@ -270,7 +330,7 @@ export class Orchestrator {
       });
     }
 
-    if (budget.decision === "chunk_required") {
+    if (budget.decision === "chunk_required" && !agentToolProtocol) {
       chunked = true;
       this.logger.warn("已触发分块执行", {
         requestId,
@@ -383,6 +443,14 @@ export class Orchestrator {
       return synthesisResponse;
     }
 
+    if (budget.decision === "chunk_required" && agentToolProtocol) {
+      this.logger.warn("Skipped generic chunking for Agent tool protocol", {
+        requestId,
+        routePath,
+        totalTokens: budget.estimate.totalTokens,
+      });
+    }
+
     let response = await this.upstreamClient.postJson(routePath, workingRequest, upstreamHeaders);
 
     if (this.config.tokenPolicy.retryOnContextError && !response.ok) {
@@ -390,45 +458,97 @@ export class Orchestrator {
       response = inspected.replayResponse;
 
       if (inspected.contextError.detected) {
+        let toolResultRescueApplied = false;
         const beforeContextErrorCompactTokens = estimateRequestTokens(
           workingRequest,
           this.config.tokenPolicy.responseReserve,
         ).inputTokens;
-        const compactRetryRequest = compactRequest(workingRequest);
-        const afterContextErrorCompactTokens = estimateRequestTokens(
-          compactRetryRequest,
-          this.config.tokenPolicy.responseReserve,
-        ).inputTokens;
-        if (
-          afterContextErrorCompactTokens < beforeContextErrorCompactTokens &&
-          (
-            (inspected.contextError.inputTokens ?? beforeContextErrorCompactTokens) >= this.config.tokenPolicy.compactThreshold ||
-            inspected.contextError.detected
-          )
-        ) {
-          workingRequest = compactRetryRequest;
-          compacted = true;
-          budget = assessBudget(
-            workingRequest,
-            this.config.tokenPolicy.compactThreshold,
-            this.config.tokenPolicy.hardLimit,
+        if (!agentToolProtocol) {
+          const compactRetryRequest = compactRequest(workingRequest);
+          const afterContextErrorCompactTokens = estimateRequestTokens(
+            compactRetryRequest,
             this.config.tokenPolicy.responseReserve,
-            this.config.tokenPolicy.safetyMargin,
-          );
-          this.logger.warn("上游返回上下文超限后已触发代理端压缩", {
-            requestId,
-            routePath,
-            beforeCompactInputTokens: beforeContextErrorCompactTokens,
-            afterCompactInputTokens: afterContextErrorCompactTokens,
-            providerInputTokens: inspected.contextError.inputTokens,
-            postCompactDecision: budget.decision,
-          });
+          ).inputTokens;
+          if (
+            afterContextErrorCompactTokens < beforeContextErrorCompactTokens &&
+            (
+              (inspected.contextError.inputTokens ?? beforeContextErrorCompactTokens) >= this.config.tokenPolicy.compactThreshold ||
+              inspected.contextError.detected
+            )
+          ) {
+            workingRequest = compactRetryRequest;
+            compacted = true;
+            budget = assessBudget(
+              workingRequest,
+              this.config.tokenPolicy.compactThreshold,
+              this.config.tokenPolicy.hardLimit,
+              this.config.tokenPolicy.responseReserve,
+              this.config.tokenPolicy.safetyMargin,
+            );
+            this.logger.warn("上游返回上下文超限后已触发代理端压缩", {
+              requestId,
+              routePath,
+              beforeCompactInputTokens: beforeContextErrorCompactTokens,
+              afterCompactInputTokens: afterContextErrorCompactTokens,
+              providerInputTokens: inspected.contextError.inputTokens,
+              postCompactDecision: budget.decision,
+            });
+          }
+        } else {
+          const policy = resolveToolResultPolicy(this.config);
+          const configuredTarget = policy.target;
+          const keepRecent = policy.keepRecent;
+          const currentInputTokens = estimateRequestTokens(workingRequest, 0).inputTokens;
+          const target = Math.min(configuredTarget, Math.max(1, Math.floor(currentInputTokens * 0.75)));
+          const clearing = (this.config.tokenPolicy.toolResultClearingEnabled ?? true)
+            ? clearOldToolResults(workingRequest, target, keepRecent)
+            : null;
+          if (clearing?.applied) {
+            workingRequest = clearing.request;
+            toolResultRescueApplied = true;
+            toolResultsCleared += clearing.clearedResults;
+            toolResultTokensCleared += clearing.estimatedTokensCleared;
+            budget = assessBudget(
+              workingRequest,
+              this.config.tokenPolicy.compactThreshold,
+              this.config.tokenPolicy.hardLimit,
+              this.config.tokenPolicy.responseReserve,
+              this.config.tokenPolicy.safetyMargin,
+            );
+            this.logger.warn("Cleared old Agent tool results after upstream context error", {
+              requestId,
+              routePath,
+              reason: "upstream_context_error",
+              clearedResults: clearing.clearedResults,
+              estimatedTokensCleared: clearing.estimatedTokensCleared,
+              beforeInputTokens: clearing.beforeInputTokens,
+              afterInputTokens: clearing.afterInputTokens,
+              providerInputTokens: inspected.contextError.inputTokens,
+              providerContextLimit: inspected.contextError.contextLimit,
+              keepRecent,
+              targetInputTokens: target,
+            });
+          } else {
+            this.logger.warn("Preserved Agent tool protocol after upstream context error", {
+              requestId,
+              routePath,
+              providerInputTokens: inspected.contextError.inputTokens,
+              toolResultClearingAvailable: false,
+            });
+          }
         }
 
-        const retryAdjustment = this.reduceMaxTokensAfterContextError(
-          workingRequest,
-          inspected.contextError,
-        );
+        const retryAdjustment = toolResultRescueApplied
+          ? this.reduceMaxTokensIfNeeded(
+              workingRequest,
+              budget,
+              "upstream_context_error",
+              inspected.contextError.contextLimit ?? this.config.tokenPolicy.hardLimit,
+            )
+          : this.reduceMaxTokensAfterContextError(
+              workingRequest,
+              inspected.contextError,
+            );
 
         this.logger.warn("上游返回上下文超限错误，已解析错误详情", {
           requestId,
@@ -436,18 +556,21 @@ export class Orchestrator {
           status: response.status,
           contextLimit: inspected.contextError.contextLimit,
           inputTokens: inspected.contextError.inputTokens,
-          canRetry: retryAdjustment.adjusted,
+          canRetry: retryAdjustment.adjusted || toolResultRescueApplied,
         });
 
-        if (retryAdjustment.adjusted) {
-          workingRequest = retryAdjustment.request;
-          maxTokensReduced = true;
+        if (retryAdjustment.adjusted || toolResultRescueApplied) {
+          if (retryAdjustment.adjusted) {
+            workingRequest = retryAdjustment.request;
+            maxTokensReduced = true;
+          }
           retriedAfterContextError = true;
           this.logger.warn("已降低max_tokens并自动重试一次", {
             requestId,
             routePath,
             originalMaxTokens: retryAdjustment.originalMaxTokens,
             adjustedMaxTokens: retryAdjustment.adjustedMaxTokens,
+            toolResultRescueApplied,
           });
           response = await this.upstreamClient.postJson(routePath, workingRequest, upstreamHeaders);
         }
@@ -465,6 +588,8 @@ export class Orchestrator {
         chunked,
         visionUsed: withVision.vision.used,
         inputTokens: budget.estimate.inputTokens,
+        toolResultsCleared,
+        toolResultTokensCleared,
         upstreamBody: bodyPreview,
       });
     }
@@ -488,6 +613,8 @@ export class Orchestrator {
         maxTokensReduced,
         visionUsed: withVision.vision.used,
         inputTokens: budget.estimate.inputTokens,
+        toolResultsCleared,
+        toolResultTokensCleared,
       });
     }
 
@@ -501,6 +628,8 @@ export class Orchestrator {
       chunked,
       maxTokensReduced,
       retriedAfterContextError,
+      toolResultsCleared,
+      toolResultTokensCleared,
       vision: withVision.vision,
     });
 
@@ -517,6 +646,8 @@ export class Orchestrator {
       chunked: record.chunked,
       maxTokensReduced: record.maxTokensReduced,
       retriedAfterContextError: record.retriedAfterContextError,
+      toolResultsCleared: record.toolResultsCleared,
+      toolResultTokensCleared: record.toolResultTokensCleared,
       visionUsed: record.vision.used,
     });
   }

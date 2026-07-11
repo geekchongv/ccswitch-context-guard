@@ -26,6 +26,7 @@ export type ProtectionEventKind =
   | "retry"
   | "compact"
   | "chunk"
+  | "tool"
   | "vision"
   | "request";
 
@@ -192,6 +193,41 @@ export function extractProtectionEvents(entries: LogEntry[], limit = 12): Protec
         severity: "success",
         title: "Protected request completed",
         summary: `HTTP ${String(data.status ?? "unknown")} with guardrails applied`,
+        metadata: entry.metadata,
+      }];
+    }
+
+    if (entry.message === "Claude tool batch observed") {
+      const repeated = numberValue(data.repeatedCalls) ?? 0;
+      const truncated = numberValue(data.truncatedResults) ?? 0;
+      return [{
+        timestamp: entry.timestamp,
+        kind: "tool",
+        severity: repeated > 0 || truncated > 0 ? "warning" : "info",
+        title: "Claude tool batch observed",
+        summary: `${formatTokens(data.toolCount)} calls / ${formatTokens(data.outputChars)} output chars / ${repeated} repeated / ${truncated} truncated (observe only)`,
+        metadata: entry.metadata,
+      }];
+    }
+
+    if (entry.message.includes("Cleared old Agent tool results")) {
+      return [{
+        timestamp: entry.timestamp,
+        kind: "tool",
+        severity: "success",
+        title: "Old tool results cleared safely",
+        summary: `${formatTokens(data.clearedResults)} results / ${formatTokens(data.estimatedTokensCleared)} estimated tokens freed / ${formatTokens(data.beforeInputTokens)} -> ${formatTokens(data.afterInputTokens)}`,
+        metadata: entry.metadata,
+      }];
+    }
+
+    if (entry.message === "Claude native compact observed") {
+      return [{
+        timestamp: entry.timestamp,
+        kind: "compact",
+        severity: "success",
+        title: "Claude native compact completed",
+        summary: `Session ${String(data.sessionId ?? "unknown")} reset its observation state`,
         metadata: entry.metadata,
       }];
     }

@@ -10,9 +10,10 @@ import { resolveFreePort } from "./port-resolver.js";
 import { discoverUpstream } from "./upstream-discoverer.js";
 import { AppConfig } from "./types.js";
 import { DashboardStatus } from "./dashboard.js";
+import { HookObserver } from "./hook-observer.js";
 
 const MAX_PORT_TRIES = 100;
-const VERSION = "0.4.2";
+const VERSION = "0.4.9";
 
 export type ProxyStatus = DashboardStatus;
 
@@ -60,7 +61,8 @@ export async function startProxy(options: StartProxyOptions = {}): Promise<Proxy
   const logger = new Logger(config.logging);
   const sessionStore = new SessionStore(config.runtime.directory);
   const orchestrator = new Orchestrator(config, logger, sessionStore);
-  const patcher = new ClaudeConfigPatcher(config, logger);
+  const hookObserver = new HookObserver(logger);
+  const patcher = new ClaudeConfigPatcher(config, logger, hookObserver);
   const startedAt = new Date().toISOString();
 
   let status: ProxyStatus = {
@@ -81,6 +83,7 @@ export async function startProxy(options: StartProxyOptions = {}): Promise<Proxy
     }
     shutdownStarted = true;
     logger.info("Shutting down ccproxy-agent", { reason });
+    patcher.stopDesktopGatewayWatch();
     patcher.restore();
     await new Promise<void>((resolve) => {
       server.closeAllConnections?.();
@@ -94,6 +97,7 @@ export async function startProxy(options: StartProxyOptions = {}): Promise<Proxy
     requestShutdown: (reason) => {
       void shutdown(reason).then(() => process.exit(0));
     },
+    hookObserver: (config.claudeConfigPatch.hookObserverEnabled ?? true) ? hookObserver : undefined,
   });
 
   if (config.server.autoPort ?? true) {
@@ -134,6 +138,7 @@ export async function startProxy(options: StartProxyOptions = {}): Promise<Proxy
   });
 
   patcher.apply();
+  patcher.startDesktopGatewayWatch();
 
   status = {
     version: VERSION,

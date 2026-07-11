@@ -69,7 +69,7 @@ test("CJK text is counted materially higher than the old length/3 heuristic", ()
   assert.ok(tokens > oldHeuristic, `中文计数 ${tokens} 应高于旧 length/3 估值 ${oldHeuristic}`);
 });
 
-test("unknown part shapes are counted via bounded JSON, not inflated", () => {
+test("unknown part text is fully counted so tool-like payloads cannot hide context", () => {
   const message: ChatMessage = {
     role: "user",
     content: [
@@ -78,6 +78,5 @@ test("unknown part shapes are counted via bounded JSON, not inflated", () => {
   };
 
   const tokens = countMessageTokens(message);
-  // 有界 JSON(200 字符上限)→ 计数应远小于 500k 字符的 length/3。
-  assert.ok(tokens < 200, `未知 part 应走有界 JSON,实际 ${tokens}`);
+  assert.ok(tokens > 10_000, `large unknown text must be materially counted, got ${tokens}`);
 });

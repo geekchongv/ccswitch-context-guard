@@ -71,6 +71,7 @@ function eventIcon(kind) {
     max_tokens: "↓",
     retry: "↻",
     compact: "/",
+    tool: "T",
     chunk: "≡",
     vision: "◐",
     request: "✓",
@@ -137,6 +138,13 @@ function fillForm() {
   $("compactThreshold").value = config.tokenPolicy.compactThreshold;
   $("hardLimit").value = config.tokenPolicy.hardLimit;
   $("safetyMargin").value = config.tokenPolicy.safetyMargin;
+  $("autoCompactEnabled").checked = config.claudeConfigPatch.autoCompactEnabled ?? true;
+  $("autoCompactReserveTokens").value = config.claudeConfigPatch.autoCompactReserveTokens ?? 30000;
+  $("hookObserverEnabled").checked = config.claudeConfigPatch.hookObserverEnabled ?? true;
+  $("toolResultClearingEnabled").checked = config.tokenPolicy.toolResultClearingEnabled ?? true;
+  $("toolResultClearTrigger").value = config.tokenPolicy.toolResultClearTrigger ?? 170000;
+  $("toolResultClearTarget").value = config.tokenPolicy.toolResultClearTarget ?? 150000;
+  $("toolResultKeepRecent").value = config.tokenPolicy.toolResultKeepRecent ?? 3;
 
   $("visionEnabled").checked = config.vision.enabled;
   $("visionCompare").checked = config.vision.compareModels;
@@ -165,6 +173,13 @@ function collectConfig() {
   next.tokenPolicy.compactThreshold = num("compactThreshold");
   next.tokenPolicy.hardLimit = num("hardLimit");
   next.tokenPolicy.safetyMargin = num("safetyMargin");
+  next.claudeConfigPatch.autoCompactEnabled = bool("autoCompactEnabled");
+  next.claudeConfigPatch.autoCompactReserveTokens = num("autoCompactReserveTokens");
+  next.claudeConfigPatch.hookObserverEnabled = bool("hookObserverEnabled");
+  next.tokenPolicy.toolResultClearingEnabled = bool("toolResultClearingEnabled");
+  next.tokenPolicy.toolResultClearTrigger = num("toolResultClearTrigger");
+  next.tokenPolicy.toolResultClearTarget = num("toolResultClearTarget");
+  next.tokenPolicy.toolResultKeepRecent = num("toolResultKeepRecent");
 
   next.vision.enabled = bool("visionEnabled");
   next.vision.compareModels = bool("visionCompare");

@@ -75,6 +75,129 @@ function buildTestConfig(port: number): AppConfig {
   };
 }
 
+function buildToolHistory(resultRepeats = 3000): ChatCompletionRequest {
+  const messages: NonNullable<ChatCompletionRequest["messages"]> = [];
+  for (let index = 0; index < 6; index += 1) {
+    messages.push({
+      role: "assistant",
+      content: [{
+        type: "tool_use",
+        id: `toolu_${index}`,
+        name: "Read",
+        input: { file_path: `source-${index}.ts` },
+      }],
+    });
+    messages.push({
+      role: "user",
+      content: [{
+        type: "tool_result",
+        tool_use_id: `toolu_${index}`,
+        content: `tool-output-${index} ` + "source code output with line details. ".repeat(resultRepeats),
+      }],
+    });
+  }
+  return {
+    system: [{ type: "text", text: "You are a coding agent. Preserve tool protocol." }],
+    tools: [{ name: "Read", description: "Read a file", input_schema: { type: "object" } }],
+    messages,
+    max_tokens: 4096,
+  };
+}
+
+function requestToolParts(request: ChatCompletionRequest, type: string): Array<Record<string, unknown>> {
+  return (request.messages ?? []).flatMap((message) =>
+    Array.isArray(message.content)
+      ? message.content.filter((part) => (part as Record<string, unknown>).type === type)
+      : [],
+  ) as Array<Record<string, unknown>>;
+}
+
+test("orchestrator proactively clears old tool results without breaking protocol", async () => {
+  mkdirSync("test-output/logs", { recursive: true });
+  mkdirSync("test-output/runtime/sessions", { recursive: true });
+  const received: ChatCompletionRequest[] = [];
+  const upstream = http.createServer(async (request, response) => {
+    received.push((await readJson(request)) as ChatCompletionRequest);
+    response.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+    response.end(JSON.stringify({ content: [{ type: "text", text: "cleared safely" }] }));
+  });
+  upstream.listen(0, "127.0.0.1");
+  await once(upstream, "listening");
+  const address = upstream.address();
+  assert.ok(address && typeof address === "object");
+
+  try {
+    const config = buildTestConfig(address.port);
+    config.tokenPolicy.toolResultClearingEnabled = true;
+    config.tokenPolicy.toolResultClearTrigger = 5_000;
+    config.tokenPolicy.toolResultClearTarget = 3_000;
+    config.tokenPolicy.toolResultKeepRecent = 2;
+    const orchestrator = new Orchestrator(config, new Logger(config.logging), new SessionStore(config.runtime.directory));
+    const response = await orchestrator.handle("/v1/messages", buildToolHistory(500));
+
+    assert.equal(response.status, 200);
+    assert.equal(received.length, 1);
+    const uses = requestToolParts(received[0], "tool_use");
+    const results = requestToolParts(received[0], "tool_result");
+    assert.equal(uses.length, 6);
+    assert.equal(results.length, 6);
+    assert.deepEqual(uses.map((part) => part.id), results.map((part) => part.tool_use_id));
+    assert.equal(results.slice(0, 4).every((part) => String(part.content).includes("cleared by CCProxy Agent")), true);
+    assert.equal(results.slice(-2).every((part) => String(part.content).startsWith("tool-output-")), true);
+  } finally {
+    upstream.close();
+    await once(upstream, "close");
+  }
+});
+
+test("orchestrator replays the 198977 plus 1024 context error with structural tool-result rescue", async () => {
+  mkdirSync("test-output/logs", { recursive: true });
+  mkdirSync("test-output/runtime/sessions", { recursive: true });
+  const received: ChatCompletionRequest[] = [];
+  const upstream = http.createServer(async (request, response) => {
+    received.push((await readJson(request)) as ChatCompletionRequest);
+    response.writeHead(received.length === 1 ? 400 : 200, { "content-type": "application/json; charset=utf-8" });
+    if (received.length === 1) {
+      response.end(JSON.stringify({
+        error: {
+          message: "This model's maximum context length is 200000 tokens. However, you requested 1024 output tokens and your prompt contains at least 198977 input tokens, for a total of at least 200001 tokens. Please reduce the length of the input prompt or the number of requested output tokens. (parameter=input_tokens, value=198977)",
+        },
+      }));
+    } else {
+      response.end(JSON.stringify({ content: [{ type: "text", text: "rescue ok" }] }));
+    }
+  });
+  upstream.listen(0, "127.0.0.1");
+  await once(upstream, "listening");
+  const address = upstream.address();
+  assert.ok(address && typeof address === "object");
+
+  try {
+    const config = buildTestConfig(address.port);
+    config.tokenPolicy.toolResultClearingEnabled = true;
+    config.tokenPolicy.toolResultClearTrigger = Number.MAX_SAFE_INTEGER;
+    config.tokenPolicy.toolResultClearTarget = 3_000;
+    config.tokenPolicy.toolResultKeepRecent = 2;
+    const orchestrator = new Orchestrator(config, new Logger(config.logging), new SessionStore(config.runtime.directory));
+    const replayRequest = buildToolHistory(300);
+    replayRequest.max_tokens = 1024;
+    const response = await orchestrator.handle("/v1/messages", replayRequest);
+
+    assert.equal(response.status, 200);
+    assert.equal(received.length, 2);
+    assert.equal(JSON.stringify(received[0]).includes("cleared by CCProxy Agent"), false);
+    const retryUses = requestToolParts(received[1], "tool_use");
+    const retryResults = requestToolParts(received[1], "tool_result");
+    assert.deepEqual(retryUses.map((part) => part.id), retryResults.map((part) => part.tool_use_id));
+    assert.equal(retryResults.slice(0, 4).every((part) => String(part.content).includes("cleared by CCProxy Agent")), true);
+    assert.equal(retryResults.slice(-2).every((part) => String(part.content).startsWith("tool-output-")), true);
+    assert.equal(received[1]?.max_tokens, 1024);
+  } finally {
+    upstream.close();
+    await once(upstream, "close");
+  }
+});
+
 test("orchestrator lowers max_tokens and retries once after upstream context limit 400", async () => {
   mkdirSync("test-output/logs", { recursive: true });
   mkdirSync("test-output/runtime/sessions", { recursive: true });
@@ -183,6 +306,56 @@ test("orchestrator retries with provider-reported token counts when local estima
     assert.equal(response.status, 200);
     assert.equal(payload.content[0]?.text, "provider count retry ok");
     assert.deepEqual(receivedMaxTokens, [4096, 1024]);
+  } finally {
+    upstream.close();
+    await once(upstream, "close");
+  }
+});
+
+test("orchestrator preserves oversized Agent tool protocol instead of generic chunking", async () => {
+  mkdirSync("test-output/logs", { recursive: true });
+  mkdirSync("test-output/runtime/sessions", { recursive: true });
+  const received: ChatCompletionRequest[] = [];
+  const upstream = http.createServer(async (request, response) => {
+    received.push((await readJson(request)) as ChatCompletionRequest);
+    response.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+    response.end(JSON.stringify({ content: [{ type: "text", text: "agent request preserved" }] }));
+  });
+  upstream.listen(0, "127.0.0.1");
+  await once(upstream, "listening");
+  const address = upstream.address();
+  assert.ok(address && typeof address === "object");
+
+  try {
+    const base = buildTestConfig(address.port);
+    const config: AppConfig = {
+      ...base,
+      tokenPolicy: {
+        ...base.tokenPolicy,
+        compactThreshold: 1500,
+        hardLimit: 4000,
+        safetyMargin: 200,
+        responseReserve: 100,
+        chunkTarget: 2000,
+      },
+    };
+    const orchestrator = new Orchestrator(
+      config,
+      new Logger(config.logging),
+      new SessionStore(config.runtime.directory),
+    );
+    const request: ChatCompletionRequest = {
+      tools: [{ name: "Read", description: "Read a file", input_schema: { type: "object" } }],
+      messages: [{ role: "user", content: "large agent context ".repeat(3000) }],
+      max_tokens: 100,
+    };
+
+    const response = await orchestrator.handle("/v1/messages", request);
+    assert.equal(response.status, 200);
+    assert.equal(received.length, 1);
+    assert.equal(JSON.stringify(received[0]).includes("Process this chunk"), false);
+    assert.equal(JSON.stringify(received[0]).includes("[COMPACT MEMORY]"), false);
+    assert.ok(Array.isArray(received[0]?.tools));
   } finally {
     upstream.close();
     await once(upstream, "close");

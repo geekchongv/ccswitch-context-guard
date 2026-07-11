@@ -1,6 +1,6 @@
 {
   "name": "ccproxy-agent",
-  "version": "0.4.7",
+  "version": "0.4.9",
   "description": "A local orchestration proxy above ccswitch for compaction, token budgeting, and multimodal routing.",
   "type": "module",
   "main": "dist/electron-main.js",
@@ -15,10 +15,12 @@
     "dev:gui": "npm run build:gui && electron .",
     "start": "node dist/index.js",
     "check": "tsc --noEmit -p tsconfig.json",
+    "check:gui": "node scripts/validate-gui-refs.mjs",
+    "smoke:packaged": "node scripts/smoke-packaged-rescue.mjs",
     "probe": "tsx src/probe.ts",
     "test": "tsx --test src/**/*.test.ts",
     "package:exe": "npm run build && npm run bundle:pkg && pkg build/pkg/index.cjs --targets node18-win-x64 --output release/ccproxy-agent.exe && powershell -NoProfile -Command \"New-Item -ItemType Directory -Force release | Out-Null; Copy-Item config.json release\\config.json -Force\"",
-    "package:gui": "npm run build:gui && electron-builder --win portable && powershell -NoProfile -Command \"Copy-Item config.json release-gui\\config.json -Force\""
+    "package:gui": "node scripts/package-gui.mjs"
   },
   "keywords": [
     "proxy",

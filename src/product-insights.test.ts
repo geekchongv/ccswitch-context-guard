@@ -121,3 +121,42 @@ test("extractProtectionEvents turns structured logs into user-facing guard event
   assert.equal(events[2]?.kind, "retry");
   assert.equal(events[2]?.severity, "success");
 });
+
+test("extractProtectionEvents surfaces observer-only tool telemetry", () => {
+  const events = extractProtectionEvents([{
+    timestamp: "2026-07-11T00:00:00.000Z",
+    level: "info",
+    message: "Claude tool batch observed",
+    metadata: {
+      toolCount: 3,
+      outputChars: 12000,
+      repeatedCalls: 1,
+      truncatedResults: 1,
+      mode: "observe",
+    },
+  }]);
+
+  assert.equal(events.length, 1);
+  assert.equal(events[0]?.kind, "tool");
+  assert.equal(events[0]?.severity, "warning");
+  assert.match(events[0]?.summary ?? "", /observe only/);
+});
+
+test("extractProtectionEvents surfaces structural tool-result clearing", () => {
+  const events = extractProtectionEvents([{
+    timestamp: "2026-07-11T00:00:00.000Z",
+    level: "warn",
+    message: "Cleared old Agent tool results after upstream context error",
+    metadata: {
+      clearedResults: 5,
+      estimatedTokensCleared: 48000,
+      beforeInputTokens: 198977,
+      afterInputTokens: 149500,
+    },
+  }]);
+
+  assert.equal(events.length, 1);
+  assert.equal(events[0]?.kind, "tool");
+  assert.equal(events[0]?.severity, "success");
+  assert.match(events[0]?.summary ?? "", /198,977 -> 149,500/);
+});

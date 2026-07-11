@@ -1,6 +1,7 @@
 import { sliceByTokens } from "tokenx";
 import { ChatCompletionRequest, ChatMessage, ChatMessagePart, ChatMessagePartImage } from "./types.js";
 import { countTextTokens, countMessageTokens } from "./token-counter.js";
+import { estimateRequestTokens } from "./token-estimator.js";
 
 /** 图片占位符,与 token-counter 保持一致 —— 切分时图片块永不拆分。 */
 const IMAGE_PLACEHOLDER = "[image]";
@@ -299,7 +300,15 @@ export function buildChunkPlan(
   hardCap: number,
 ): ChatCompletionRequest[] {
   const messages = request.messages ?? [];
-  const chunks = chunkMessages(messages, chunkTarget, hardCap);
+  const topLevelOverhead = Math.max(
+    0,
+    estimateRequestTokens({ ...request, messages: [], max_tokens: 0, max_completion_tokens: 0 }, 0).inputTokens - 250,
+  );
+  const chunks = chunkMessages(
+    messages,
+    Math.max(1, chunkTarget - topLevelOverhead),
+    Math.max(1, hardCap - topLevelOverhead),
+  );
 
   return chunks.map((chunk, index) => ({
     ...request,
@@ -320,9 +329,13 @@ export function buildSynthesisRequest(
   chunkOutputs: string[],
   hardCap = 120_000,
 ): ChatCompletionRequest {
+  const topLevelOverhead = Math.max(
+    0,
+    estimateRequestTokens({ ...originalRequest, messages: [], max_tokens: 0, max_completion_tokens: 0 }, 0).inputTokens - 250,
+  );
   const synthesisInputBudget = Math.max(
-    1000,
-    hardCap - countTextTokens(SYNTHESIS_PREAMBLE) - WRAPPER_RESERVE,
+    1,
+    hardCap - topLevelOverhead - countTextTokens(SYNTHESIS_PREAMBLE) - WRAPPER_RESERVE,
   );
   const synthesisBody = [
     "Original task preview:",

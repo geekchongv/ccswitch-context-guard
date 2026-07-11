@@ -1,4 +1,14 @@
+import { sliceByTokens } from "tokenx";
 import { ChatMessage, ChatMessagePart, ChatCompletionRequest } from "./types.js";
+import { countMessageTokens, countTextTokens } from "./token-counter.js";
+
+const DEFAULT_COMPACT_TARGET_INPUT_TOKENS = 60_000;
+const COMPACT_MEMORY_TOKENS = 6_000;
+const PRESERVED_HEAD_TOKENS = 1_000;
+const RECENT_TAIL_TOKENS = 2_500;
+const SHORT_LATEST_MESSAGE_TOKENS = 12_000;
+const TRUNCATED_SUFFIX = "\n[truncated by proxy compact]";
+const IMAGE_PLACEHOLDER = "[image-content]";
 
 function partToText(part: ChatMessagePart): string {
   if ("text" in part && typeof part.text === "string") {
@@ -6,10 +16,10 @@ function partToText(part: ChatMessagePart): string {
   }
 
   if ("image_url" in part || "url" in part) {
-    return "[image-content]";
+    return IMAGE_PLACEHOLDER;
   }
 
-  return JSON.stringify(part);
+  return JSON.stringify(part).slice(0, 500);
 }
 
 function messageContentToText(message: ChatMessage): string {
@@ -18,6 +28,27 @@ function messageContentToText(message: ChatMessage): string {
   }
 
   return message.content.map(partToText).join("\n");
+}
+
+function truncateByTokens(text: string, maxTokens: number): string {
+  if (countTextTokens(text) <= maxTokens) {
+    return text;
+  }
+
+  const suffixTokens = countTextTokens(TRUNCATED_SUFFIX);
+  return `${sliceByTokens(text, 0, Math.max(1, maxTokens - suffixTokens))}${TRUNCATED_SUFFIX}`;
+}
+
+function compactMessage(message: ChatMessage, maxTokens: number): ChatMessage {
+  return {
+    role: message.role,
+    name: message.name,
+    content: truncateByTokens(messageContentToText(message), maxTokens),
+  };
+}
+
+function estimateMessagesTokens(messages: ChatMessage[]): number {
+  return messages.reduce((sum, message) => sum + countMessageTokens(message), 0);
 }
 
 function buildStructuredCompactBlock(messages: ChatMessage[]): string {
@@ -54,16 +85,37 @@ function buildStructuredCompactBlock(messages: ChatMessage[]): string {
   ].join("\n\n");
 }
 
-export function compactRequest(request: ChatCompletionRequest): ChatCompletionRequest {
+export function compactRequest(
+  request: ChatCompletionRequest,
+  targetInputTokens = DEFAULT_COMPACT_TARGET_INPUT_TOKENS,
+): ChatCompletionRequest {
   const messages = request.messages ?? [];
-  if (messages.length <= 6) {
+  if (messages.length <= 6 && estimateMessagesTokens(messages) <= targetInputTokens) {
     return request;
   }
 
-  const preservedHead = messages.slice(0, 2);
-  const recentTail = messages.slice(-4);
-  const compactedMiddle = messages.slice(2, -4);
-  const compactBlock = buildStructuredCompactBlock(compactedMiddle);
+  const compactBlock = truncateByTokens(buildStructuredCompactBlock(messages), COMPACT_MEMORY_TOKENS);
+
+  if (messages.length <= 6) {
+    const systemHead = messages.find((message) => message.role === "system");
+    const latestUser = [...messages].reverse().find((message) => message.role === "user") ?? messages.at(-1);
+    const compactedMessages: ChatMessage[] = [
+      ...(systemHead ? [compactMessage(systemHead, PRESERVED_HEAD_TOKENS)] : []),
+      {
+        role: "system",
+        content: compactBlock,
+      },
+      ...(latestUser ? [compactMessage(latestUser, SHORT_LATEST_MESSAGE_TOKENS)] : []),
+    ];
+
+    return {
+      ...request,
+      messages: compactedMessages,
+    };
+  }
+
+  const preservedHead = messages.slice(0, 2).map((message) => compactMessage(message, PRESERVED_HEAD_TOKENS));
+  const recentTail = messages.slice(-4).map((message) => compactMessage(message, RECENT_TAIL_TOKENS));
 
   return {
     ...request,

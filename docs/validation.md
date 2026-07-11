@@ -10,11 +10,18 @@ The proxy is considered acceptable for v0.2 use when all items below pass.
 2. Non-AI routes are transparently forwarded to the upstream service.
 3. `POST /v1/messages` can pass through the proxy and return a provider response.
 4. `POST /v1/chat/completions` can pass through the proxy when the upstream provider configuration supports it.
-5. Requests over the compact threshold trigger proxy-side compaction when `compactMode = "proxy"`.
+5. Requests over the compact threshold trigger a `/compact` warning when `compactMode = "warn"`.
 6. Requests whose requested output would exceed the safe context budget automatically lower `max_tokens`.
 7. Upstream context-limit `400` errors are parsed and retried once when a safe output budget is available.
 8. Claude Desktop 3P configs are patched from `15721` to `15722` and restored on shutdown.
 9. Prefixed Desktop routes such as `/claude-desktop/v1/messages` enter the AI orchestration layer.
+10. Agent requests containing declared tools or `tool_use` / `tool_result` blocks bypass generic chunking and proxy text compaction.
+11. Claude CLI settings receive native auto-compact values only when the user has not already configured them.
+12. Observer HTTP hooks accept authenticated localhost requests, emit aggregate telemetry, and never block tool execution.
+13. Proxy shutdown removes only its own hook entries and restores only environment values it patched.
+14. Token estimation includes top-level system content, tool schemas, tool calls, and complete tool-result text while bounding image Base64.
+15. Structural clearing preserves every tool call/result ID and message position, keeps recent results, and does not mutate the original request.
+16. A replay of `198977 input + 1024 output` succeeds after one structural retry through the real HTTP proxy route.
 10. Requests over the hard limit trigger staged chunk execution.
 11. Image-bearing requests trigger vision preprocessing when `vision.enabled = true`.
 12. Orchestration records are written into `runtime/sessions/`.
@@ -44,5 +51,7 @@ npm run probe
 - provider-native tokenization is not implemented
 - streaming is proxied at the HTTP layer but not specially transformed
 - `/compact` is a warning in default mode, not a hidden CLI command
+- Native auto-compact environment changes apply to newly started Claude CLI processes
+- Hook observation is fail-open and observe-only in v0.4.8
 - Claude Desktop must be restarted after config changes because it reads 3P settings at launch
 - multimodal preprocessing currently summarizes images before text execution rather than fusing native image parts into every provider schema

@@ -23,12 +23,16 @@ const defaultConfig: AppConfig = {
     responseReserve: 12000,
     chunkTarget: 90000,
     safetyMargin: 8000,
-    compactMode: "proxy",
+    compactMode: "warn",
     compactWarningText:
       "[上下文提醒] 当前会话已经接近上下文上限，建议你现在执行 /compact 后再继续。",
     autoReduceMaxTokens: true,
     retryOnContextError: true,
     minOutputTokens: 1024,
+    toolResultClearingEnabled: true,
+    toolResultClearTrigger: 170_000,
+    toolResultClearTarget: 150_000,
+    toolResultKeepRecent: 3,
   },
   vision: {
     enabled: false,
@@ -60,6 +64,9 @@ const defaultConfig: AppConfig = {
   claudeConfigPatch: {
     enabled: true,
     settingsPath: path.join(os.homedir(), ".claude", "settings.json"),
+    autoCompactEnabled: true,
+    autoCompactReserveTokens: 30_000,
+    hookObserverEnabled: true,
   },
   claudeDesktopConfigPatch: {
     enabled: true,

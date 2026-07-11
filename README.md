@@ -159,13 +159,33 @@ Copy `config.example.json` → `config.json`. Key sections:
     "compactThreshold": 180000,
     "hardLimit": 200000,
     "safetyMargin": 8000,
-    "compactMode": "proxy",
+    "compactMode": "warn",
     "autoReduceMaxTokens": true,
     "retryOnContextError": true,
     "minOutputTokens": 1024
   }
 }
 ```
+
+</details>
+
+<details>
+<summary><b>Claude Code native compact and tool observation</b></summary>
+
+```json
+{
+  "claudeConfigPatch": {
+    "enabled": true,
+    "autoCompactEnabled": true,
+    "autoCompactReserveTokens": 30000,
+    "hookObserverEnabled": true
+  }
+}
+```
+
+For a 200k context window, reserving 30k configures new Claude Code CLI processes to compact at about 85%. Existing user values for `CLAUDE_CODE_AUTO_COMPACT_WINDOW` and `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` are preserved. The hook observer records only session prefixes, tool-call fingerprints, output sizes, repeated-call counts, and truncation flags; it does not persist source or tool output content and does not block tools in v0.4.8.
+
+Agent requests containing `tools`, `tool_use`, or `tool_result` are never sent through generic proxy chunking or text-flattening compaction. When an Agent request reaches the configured threshold, CCProxy Agent keeps every `tool_use`, `tool_use_id`, message role, and message position while replacing only older `tool_result.content` values with explicit placeholders. The three most recent tool results are preserved by default. The same structural rescue is attempted once after an upstream context-limit error.
 
 </details>
 
@@ -250,7 +270,10 @@ See [SECURITY.md](SECURITY.md) for details.
 ## ⚠️ Current Limits
 
 - Token counting before upstream is **heuristic**, not provider-native
-- `/compact` is a reminder by default, not hidden Claude CLI command injection
+- Claude Code CLI native auto-compact settings apply to newly started CLI processes
+- Tool-loop hooks are observe-only in v0.4.8 and require a Claude Code version with HTTP hook support
+- Claude Desktop does not expose the same CLI hook lifecycle and receives base proxy protection only
+- Agent context editing clears only old tool-result bodies; it never summarizes or flattens tool protocol messages
 - Multimodal routing is a planned path, disabled by default beyond summarization
 - Chunking is a fallback, not a full long-task planning engine
 - Primarily tested on **Windows**

@@ -153,6 +153,13 @@
             <div class="field"><label>Compact 阈值</label><input id="compactThreshold" type="number" min="1"></div>
             <div class="field"><label>上下文硬上限</label><input id="hardLimit" type="number" min="1"></div>
             <div class="field"><label>安全余量</label><input id="safetyMargin" type="number" min="0"></div>
+            <div class="field"><label>Claude 原生自动压缩</label><div class="check"><input id="autoCompactEnabled" type="checkbox"><span>为新启动的 CLI 会话提前触发 compact</span></div></div>
+            <div class="field"><label>Compact 预留 token</label><input id="autoCompactReserveTokens" type="number" min="1000"></div>
+            <div class="field"><label>工具循环观察</label><div class="check"><input id="hookObserverEnabled" type="checkbox"><span>只记录指纹和截断状态，不阻断工具</span></div></div>
+            <div class="field"><label>结构化工具结果清理</label><div class="check"><input id="toolResultClearingEnabled" type="checkbox"><span>保留工具配对，只清理较老结果正文</span></div></div>
+            <div class="field"><label>工具清理触发 token</label><input id="toolResultClearTrigger" type="number" min="1000"></div>
+            <div class="field"><label>工具清理目标 token</label><input id="toolResultClearTarget" type="number" min="1000"></div>
+            <div class="field"><label>保留最近工具结果</label><input id="toolResultKeepRecent" type="number" min="1"></div>
           </div>
         </div>
       </section>

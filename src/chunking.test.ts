@@ -183,6 +183,24 @@ test("buildSynthesisRequest truncates excessive chunk outputs under the hard cap
   assert.ok(userContent.includes("[truncated]"));
 });
 
+test("chunk and synthesis budgets include top-level system content", () => {
+  const hardCap = 20_000;
+  const request: ChatCompletionRequest = {
+    system: [{ type: "text", text: "persistent system policy. ".repeat(2000) }],
+    messages: [{ role: "user", content: sample().repeat(5000) }],
+    max_tokens: 1000,
+  };
+
+  const chunks = buildChunkPlan(request, 12_000, hardCap);
+  assert.ok(chunks.length > 1);
+  for (const chunk of chunks) {
+    assert.ok(chunkInputTokens(chunk) <= hardCap);
+  }
+
+  const synthesis = buildSynthesisRequest(request, ["result ".repeat(30_000)], hardCap);
+  assert.ok(chunkInputTokens(synthesis) <= hardCap);
+});
+
 function sample(): string {
   return "The proxy estimates the current message size and warns the user before the request reaches the upstream hard limit. ";
 }

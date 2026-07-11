@@ -5,12 +5,19 @@ import { Logger } from "./logger.js";
 import { Orchestrator } from "./orchestrator.js";
 import { UpstreamClient } from "./upstream-client.js";
 import { DashboardStatus, renderDashboard, renderNotFound, serializeLogs } from "./dashboard.js";
+import { HookObserver } from "./hook-observer.js";
 
-async function readRawBody(request: http.IncomingMessage): Promise<Buffer> {
+async function readRawBody(request: http.IncomingMessage, maxBytes = Number.POSITIVE_INFINITY): Promise<Buffer> {
   const chunks: Buffer[] = [];
+  let totalBytes = 0;
 
   for await (const chunk of request) {
-    chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
+    const buffer = typeof chunk === "string" ? Buffer.from(chunk) : chunk;
+    totalBytes += buffer.length;
+    if (totalBytes > maxBytes) {
+      throw new Error(`request body exceeds ${maxBytes} bytes`);
+    }
+    chunks.push(buffer);
   }
 
   return Buffer.concat(chunks);
@@ -100,6 +107,7 @@ async function pipeUpstreamResponse(upstreamResponse: Response, response: http.S
 export interface ServerOptions {
   getStatus?: () => DashboardStatus;
   requestShutdown?: (reason: string) => void;
+  hookObserver?: HookObserver;
 }
 
 function isLoopbackRequest(request: http.IncomingMessage): boolean {
@@ -160,6 +168,23 @@ export function createServer(
           upstream: config.upstream.baseUrl,
           dashboard: config.ui.enabled ? `http://${config.server.host}:${config.server.port}/` : null,
         });
+        return;
+      }
+
+      if (request.method === "POST" && routePath.startsWith("/hooks/")) {
+        if (!isLoopbackRequest(request) || !options.hookObserver) {
+          writeJson(response, 403, { ok: false });
+          return;
+        }
+        if (request.headers["x-ccproxy-hook-token"] !== options.hookObserver.token) {
+          writeJson(response, 401, { ok: false });
+          return;
+        }
+
+        const hookBody = await readRawBody(request, 1_000_000);
+        options.hookObserver.observe(JSON.parse(hookBody.toString("utf8")) as Record<string, unknown>);
+        response.writeHead(204);
+        response.end();
         return;
       }
 

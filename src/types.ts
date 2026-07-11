@@ -33,6 +33,10 @@ export interface TokenPolicyConfig {
   autoReduceMaxTokens: boolean;
   retryOnContextError: boolean;
   minOutputTokens: number;
+  toolResultClearingEnabled?: boolean;
+  toolResultClearTrigger?: number;
+  toolResultClearTarget?: number;
+  toolResultKeepRecent?: number;
 }
 
 export interface VisionConfig {
@@ -69,6 +73,9 @@ export interface UiConfig {
 export interface ClaudeConfigPatchConfig {
   enabled: boolean;
   settingsPath?: string;
+  autoCompactEnabled?: boolean;
+  autoCompactReserveTokens?: number;
+  hookObserverEnabled?: boolean;
 }
 
 export interface ClaudeDesktopConfigPatchConfig {
@@ -77,6 +84,8 @@ export interface ClaudeDesktopConfigPatchConfig {
   gatewayBaseUrl?: string;
   apiKey?: string;
   authScheme?: "bearer" | "x-api-key";
+  /** Desktop gateway 漂移检测轮询间隔(ms),0 禁用,默认 5000。 */
+  desktopWatchIntervalMs?: number;
 }
 
 export interface AppConfig {
@@ -158,5 +167,7 @@ export interface OrchestrationRecord {
   chunked: boolean;
   maxTokensReduced: boolean;
   retriedAfterContextError: boolean;
+  toolResultsCleared?: number;
+  toolResultTokensCleared?: number;
   vision: VisionAnalysisResult;
 }

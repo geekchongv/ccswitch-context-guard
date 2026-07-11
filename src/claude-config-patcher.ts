@@ -6,6 +6,7 @@ import { getBaseDirectory } from "./paths.js";
 
 interface ClaudeSettingsFile {
   env?: Record<string, string>;
+  hooks?: Record<string, unknown>;
   [key: string]: unknown;
 }
 
@@ -14,7 +15,19 @@ interface PatchState {
   patchedAt: string;
   settingsPath: string;
   previousBaseUrl?: string;
+  patchedBaseUrl?: string;
+  previousAutoCompactWindow?: string;
+  previousAutoCompactPct?: string;
+  patchedAutoCompactWindow?: string;
+  patchedAutoCompactPct?: string;
+  insertedHookUrls?: string[];
 }
+
+interface HookIntegration {
+  token: string;
+}
+
+const HOOK_EVENTS = ["UserPromptSubmit", "PostToolBatch", "PostCompact", "SessionEnd"] as const;
 
 interface ClaudeDesktopMetaFile {
   appliedId?: string;
@@ -42,16 +55,23 @@ interface DesktopPatchState {
   previousGatewayBaseUrl?: string;
   previousApiKey?: string;
   previousAuthScheme?: string;
+  /** Prior active config files left pointing at the proxy after an appliedId switch. */
+  strandedConfigPaths?: Array<{ configPath: string; previousGatewayBaseUrl?: string }>;
 }
 
 export class ClaudeConfigPatcher {
   private readonly statePath: string;
   private readonly desktopStatePath: string;
   private restored = false;
+  private desktopWatchTimer: ReturnType<typeof setInterval> | null = null;
+  private desktopWatchLastAppliedId: string | null = null;
+  private desktopWatchLastConfigPath: string | null = null;
+  private desktopStrandedPaths: Array<{ configPath: string; previousGatewayBaseUrl?: string }> = [];
 
   public constructor(
     private readonly config: AppConfig,
     private readonly logger: Logger,
+    private readonly hookIntegration?: HookIntegration,
   ) {
     this.statePath = path.resolve(getBaseDirectory(), this.config.runtime.directory, "claude-config-patch.json");
     this.desktopStatePath = path.resolve(
@@ -71,9 +91,136 @@ export class ClaudeConfigPatcher {
       return;
     }
 
+    this.stopDesktopGatewayWatch();
     this.restoreClaudeCli();
     this.restoreClaudeDesktop();
     this.restored = true;
+  }
+
+  public checkDesktopGatewayDrift(): void {
+    if (!this.config.claudeDesktopConfigPatch.enabled) {
+      return;
+    }
+
+    try {
+      this.checkDesktopGatewayDriftUnsafe();
+    } catch (error) {
+      // ccswitch rewrites config files non-atomically (truncate-then-write); a
+      // tick landing in that window yields a partial file whose JSON.parse throws.
+      // Swallow so the interval keeps running instead of escalating to uncaughtException.
+      this.logger.debug("Desktop gateway drift check failed, will retry next tick", {
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  private checkDesktopGatewayDriftUnsafe(): void {
+    const target = this.resolveDesktopConfigTarget();
+    if (!target) {
+      this.logger.debug("Desktop gateway drift check skipped because no applied 3P config was found", {
+        configLibraryPath: this.config.claudeDesktopConfigPatch.configLibraryPath,
+      });
+      return;
+    }
+
+    const gatewayConfig = this.readDesktopGatewayConfig(target.configPath);
+    const currentGatewayBaseUrl = gatewayConfig.inferenceGatewayBaseUrl;
+    const proxyGatewayBaseUrl = this.buildDesktopProxyGatewayBaseUrl(currentGatewayBaseUrl);
+    const appliedIdChanged = target.appliedId !== this.desktopWatchLastAppliedId;
+
+    if (!proxyGatewayBaseUrl) {
+      this.logger.debug("Desktop gateway drift check skipped because gateway URL could not be resolved", {
+        configPath: target.configPath,
+        hasCurrentGatewayBaseUrl: Boolean(currentGatewayBaseUrl),
+      });
+      return;
+    }
+
+    if (currentGatewayBaseUrl === proxyGatewayBaseUrl && !appliedIdChanged) {
+      this.logger.debug("Desktop gateway drift check: no drift", {
+        configPath: target.configPath,
+        proxyGatewayBaseUrl,
+      });
+      this.desktopWatchLastAppliedId = target.appliedId;
+      return;
+    }
+
+    this.logger.warn("检测到 Claude Desktop 网关配置漂移,正在重新 patch", {
+      configPath: target.configPath,
+      currentGatewayBaseUrl,
+      proxyGatewayBaseUrl,
+      appliedId: target.appliedId,
+      previousAppliedId: this.desktopWatchLastAppliedId,
+    });
+
+    if (appliedIdChanged && this.desktopWatchLastConfigPath && this.desktopWatchLastConfigPath !== target.configPath) {
+      this.restoreStrandedConfigPath(this.desktopWatchLastConfigPath);
+    }
+
+    this.applyClaudeDesktop();
+    this.desktopWatchLastAppliedId = target.appliedId;
+    this.desktopWatchLastConfigPath = target.configPath;
+  }
+
+  private restoreStrandedConfigPath(configPath: string): void {
+    try {
+      if (!existsSync(configPath)) {
+        return;
+      }
+      const state = existsSync(this.desktopStatePath)
+        ? (JSON.parse(readFileSync(this.desktopStatePath, "utf8")) as DesktopPatchState)
+        : null;
+      const previousGatewayBaseUrl = state?.previousGatewayBaseUrl;
+      const gatewayConfig = this.readDesktopGatewayConfig(configPath);
+      const proxyGatewayBaseUrl = this.buildDesktopProxyGatewayBaseUrl(previousGatewayBaseUrl);
+      if (gatewayConfig.inferenceGatewayBaseUrl !== proxyGatewayBaseUrl) {
+        // Not pointing at the proxy (already taken over by ccswitch) — leave it alone.
+        return;
+      }
+      const nextConfig: ClaudeDesktopGatewayFile = { ...gatewayConfig };
+      if (previousGatewayBaseUrl) {
+        nextConfig.inferenceGatewayBaseUrl = previousGatewayBaseUrl;
+      } else {
+        delete nextConfig.inferenceGatewayBaseUrl;
+      }
+      this.writeDesktopGatewayConfig(configPath, nextConfig);
+      this.desktopStrandedPaths.push({ configPath, previousGatewayBaseUrl });
+      this.logger.warn("已恢复被切换路由遗留的旧 Desktop 网关配置", {
+        configPath,
+        restoredGatewayBaseUrl: previousGatewayBaseUrl,
+      });
+    } catch (error) {
+      this.logger.error("Failed to restore stranded Desktop config path", {
+        configPath,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  public startDesktopGatewayWatch(): void {
+    const interval = this.config.claudeDesktopConfigPatch.desktopWatchIntervalMs ?? 5000;
+    if (interval <= 0) {
+      this.logger.debug("Desktop gateway drift watch disabled", { intervalMs: interval });
+      return;
+    }
+    if (this.desktopWatchTimer) {
+      return;
+    }
+
+    const initialTarget = this.resolveDesktopConfigTarget();
+    this.desktopWatchLastAppliedId = initialTarget?.appliedId ?? null;
+    this.desktopWatchLastConfigPath = initialTarget?.configPath ?? null;
+    this.desktopWatchTimer = setInterval(() => this.checkDesktopGatewayDrift(), interval);
+    this.desktopWatchTimer.unref?.();
+    this.logger.info("已启动 Claude Desktop 网关漂移监听", { intervalMs: interval });
+  }
+
+  public stopDesktopGatewayWatch(): void {
+    if (!this.desktopWatchTimer) {
+      return;
+    }
+    clearInterval(this.desktopWatchTimer);
+    this.desktopWatchTimer = null;
   }
 
   private applyClaudeCli(): void {
@@ -94,31 +241,58 @@ export class ClaudeConfigPatcher {
     const currentBaseUrl = settings.env?.ANTHROPIC_BASE_URL;
     const proxyBaseUrl = `http://${this.config.server.host}:${this.config.server.port}`;
 
-    if (currentBaseUrl === proxyBaseUrl) {
-      this.logger.debug("Claude settings already point to the proxy", { settingsPath, proxyBaseUrl });
-      return;
-    }
-
-    const nextSettings: ClaudeSettingsFile = {
-      ...settings,
-      env: {
-        ...(settings.env ?? {}),
-        ANTHROPIC_BASE_URL: proxyBaseUrl,
-      },
+    const nextEnv: Record<string, string> = {
+      ...(settings.env ?? {}),
+      ANTHROPIC_BASE_URL: proxyBaseUrl,
     };
-
-    this.writeSettings(settingsPath, nextSettings);
-    this.writeState({
+    const state: PatchState = {
       pid: process.pid,
       patchedAt: new Date().toISOString(),
       settingsPath,
       previousBaseUrl: currentBaseUrl,
-    });
+      patchedBaseUrl: proxyBaseUrl,
+    };
+
+    if (this.config.claudeConfigPatch.autoCompactEnabled ?? true) {
+      const hardLimit = this.config.tokenPolicy.hardLimit;
+      const reserve = Math.max(1, this.config.claudeConfigPatch.autoCompactReserveTokens ?? 30_000);
+      const pct = Math.max(1, Math.min(95, Math.floor(((hardLimit - reserve) / hardLimit) * 100)));
+
+      if (nextEnv.CLAUDE_CODE_AUTO_COMPACT_WINDOW === undefined) {
+        state.previousAutoCompactWindow = undefined;
+        state.patchedAutoCompactWindow = String(hardLimit);
+        nextEnv.CLAUDE_CODE_AUTO_COMPACT_WINDOW = state.patchedAutoCompactWindow;
+      }
+      if (nextEnv.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE === undefined) {
+        state.previousAutoCompactPct = undefined;
+        state.patchedAutoCompactPct = String(pct);
+        nextEnv.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE = state.patchedAutoCompactPct;
+      }
+    }
+
+    let nextHooks = settings.hooks;
+    if ((this.config.claudeConfigPatch.hookObserverEnabled ?? true) && this.hookIntegration) {
+      const result = this.addObserverHooks(settings.hooks, proxyBaseUrl, this.hookIntegration.token);
+      nextHooks = result.hooks;
+      state.insertedHookUrls = result.urls;
+    }
+
+    const nextSettings: ClaudeSettingsFile = {
+      ...settings,
+      env: nextEnv,
+      ...(nextHooks ? { hooks: nextHooks } : {}),
+    };
+
+    this.writeSettings(settingsPath, nextSettings);
+    this.writeState(state);
 
     this.logger.info("Patched Claude CLI settings to point at ccproxy-agent", {
       settingsPath,
       previousBaseUrl: currentBaseUrl,
       proxyBaseUrl,
+      autoCompactWindow: state.patchedAutoCompactWindow ?? nextEnv.CLAUDE_CODE_AUTO_COMPACT_WINDOW,
+      autoCompactPct: state.patchedAutoCompactPct ?? nextEnv.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE,
+      hookObserver: Boolean(state.insertedHookUrls?.length),
     });
   }
 
@@ -130,31 +304,7 @@ export class ClaudeConfigPatcher {
     try {
       const state = JSON.parse(readFileSync(this.statePath, "utf8")) as PatchState;
       const settings = this.readSettings(state.settingsPath);
-      const currentBaseUrl = settings.env?.ANTHROPIC_BASE_URL;
-      const proxyBaseUrl = `http://${this.config.server.host}:${this.config.server.port}`;
-
-      if (currentBaseUrl !== proxyBaseUrl) {
-        this.logger.warn("Skipped Claude settings restore because current value no longer points at proxy", {
-          settingsPath: state.settingsPath,
-          currentBaseUrl,
-          proxyBaseUrl,
-        });
-        this.safeDeleteState();
-        this.restored = true;
-        return;
-      }
-
-      const nextEnv = { ...(settings.env ?? {}) };
-      if (state.previousBaseUrl) {
-        nextEnv.ANTHROPIC_BASE_URL = state.previousBaseUrl;
-      } else {
-        delete nextEnv.ANTHROPIC_BASE_URL;
-      }
-
-      const nextSettings: ClaudeSettingsFile = {
-        ...settings,
-        env: nextEnv,
-      };
+      const nextSettings = this.restoreOwnedCliSettings(settings, state);
 
       this.writeSettings(state.settingsPath, nextSettings);
       this.safeDeleteState();
@@ -162,6 +312,7 @@ export class ClaudeConfigPatcher {
       this.logger.debug("Restored Claude CLI settings", {
         settingsPath: state.settingsPath,
         restoredBaseUrl: state.previousBaseUrl,
+        removedHookCount: state.insertedHookUrls?.length ?? 0,
       });
     } catch (error) {
       this.logger.error("Failed to restore Claude CLI settings", {
@@ -238,6 +389,7 @@ export class ClaudeConfigPatcher {
       previousGatewayBaseUrl: currentGatewayBaseUrl,
       previousApiKey: gatewayConfig.inferenceGatewayApiKey,
       previousAuthScheme: gatewayConfig.inferenceGatewayAuthScheme,
+      strandedConfigPaths: this.desktopStrandedPaths.length > 0 ? this.desktopStrandedPaths : undefined,
     });
 
     this.logger.info("Patched Claude Desktop 3P gateway to point at ccproxy-agent", {
@@ -291,6 +443,33 @@ export class ClaudeConfigPatcher {
       }
 
       this.writeDesktopGatewayConfig(state.configPath, nextConfig);
+
+      for (const stranded of state.strandedConfigPaths ?? []) {
+        if (stranded.configPath === state.configPath) continue;
+        try {
+          if (!existsSync(stranded.configPath)) continue;
+          const strandedConfig = this.readDesktopGatewayConfig(stranded.configPath);
+          const strandedProxyUrl = this.buildDesktopProxyGatewayBaseUrl(stranded.previousGatewayBaseUrl);
+          if (strandedConfig.inferenceGatewayBaseUrl !== strandedProxyUrl) continue;
+          const nextStranded: ClaudeDesktopGatewayFile = { ...strandedConfig };
+          if (stranded.previousGatewayBaseUrl) {
+            nextStranded.inferenceGatewayBaseUrl = stranded.previousGatewayBaseUrl;
+          } else {
+            delete nextStranded.inferenceGatewayBaseUrl;
+          }
+          this.writeDesktopGatewayConfig(stranded.configPath, nextStranded);
+          this.logger.debug("Restored stranded Desktop config path", {
+            configPath: stranded.configPath,
+            restoredGatewayBaseUrl: stranded.previousGatewayBaseUrl,
+          });
+        } catch (strandedError) {
+          this.logger.error("Failed to restore stranded Desktop config path", {
+            configPath: stranded.configPath,
+            message: strandedError instanceof Error ? strandedError.message : String(strandedError),
+          });
+        }
+      }
+
       this.safeDeleteDesktopState();
 
       this.logger.debug("Restored Claude Desktop 3P gateway settings", {
@@ -316,23 +495,7 @@ export class ClaudeConfigPatcher {
       }
 
       const settings = this.readSettings(settingsPath);
-      const proxyBaseUrl = `http://${this.config.server.host}:${this.config.server.port}`;
-      if (settings.env?.ANTHROPIC_BASE_URL !== proxyBaseUrl) {
-        this.safeDeleteState();
-        return;
-      }
-
-      const nextEnv = { ...(settings.env ?? {}) };
-      if (state.previousBaseUrl) {
-        nextEnv.ANTHROPIC_BASE_URL = state.previousBaseUrl;
-      } else {
-        delete nextEnv.ANTHROPIC_BASE_URL;
-      }
-
-      this.writeSettings(settingsPath, {
-        ...settings,
-        env: nextEnv,
-      });
+      this.writeSettings(settingsPath, this.restoreOwnedCliSettings(settings, state));
       this.safeDeleteState();
 
       this.logger.warn("Recovered stale Claude config patch from a previous run", {
@@ -442,6 +605,69 @@ export class ClaudeConfigPatcher {
     }
 
     return JSON.parse(readFileSync(settingsPath, "utf8")) as ClaudeSettingsFile;
+  }
+
+  private addObserverHooks(
+    hooksValue: Record<string, unknown> | undefined,
+    proxyBaseUrl: string,
+    token: string,
+  ): { hooks: Record<string, unknown>; urls: string[] } {
+    const hooks = { ...(hooksValue ?? {}) };
+    const urls: string[] = [];
+
+    for (const eventName of HOOK_EVENTS) {
+      const url = `${proxyBaseUrl}/hooks/${eventName.replace(/([a-z])([A-Z])/g, "$1-$2").toLowerCase()}`;
+      const existing = Array.isArray(hooks[eventName]) ? [...hooks[eventName] as unknown[]] : [];
+      const alreadyPresent = existing.some((entry) => JSON.stringify(entry).includes(url));
+      if (!alreadyPresent) {
+        existing.push({
+          matcher: "",
+          hooks: [{
+            type: "http",
+            url,
+            timeout: 5,
+            headers: { "x-ccproxy-hook-token": token },
+          }],
+        });
+        hooks[eventName] = existing;
+        urls.push(url);
+      }
+    }
+
+    return { hooks, urls };
+  }
+
+  private restoreOwnedCliSettings(settings: ClaudeSettingsFile, state: PatchState): ClaudeSettingsFile {
+    const nextEnv = { ...(settings.env ?? {}) };
+    const proxyBaseUrl = state.patchedBaseUrl ?? `http://${this.config.server.host}:${this.config.server.port}`;
+
+    if (nextEnv.ANTHROPIC_BASE_URL === proxyBaseUrl) {
+      if (state.previousBaseUrl) nextEnv.ANTHROPIC_BASE_URL = state.previousBaseUrl;
+      else delete nextEnv.ANTHROPIC_BASE_URL;
+    }
+    if (state.patchedAutoCompactWindow && nextEnv.CLAUDE_CODE_AUTO_COMPACT_WINDOW === state.patchedAutoCompactWindow) {
+      if (state.previousAutoCompactWindow) nextEnv.CLAUDE_CODE_AUTO_COMPACT_WINDOW = state.previousAutoCompactWindow;
+      else delete nextEnv.CLAUDE_CODE_AUTO_COMPACT_WINDOW;
+    }
+    if (state.patchedAutoCompactPct && nextEnv.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE === state.patchedAutoCompactPct) {
+      if (state.previousAutoCompactPct) nextEnv.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE = state.previousAutoCompactPct;
+      else delete nextEnv.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE;
+    }
+
+    const hooks = { ...(settings.hooks ?? {}) };
+    for (const [eventName, value] of Object.entries(hooks)) {
+      if (!Array.isArray(value)) continue;
+      const filtered = value.filter((entry) =>
+        !(state.insertedHookUrls ?? []).some((url) => JSON.stringify(entry).includes(url)),
+      );
+      if (filtered.length > 0) hooks[eventName] = filtered;
+      else delete hooks[eventName];
+    }
+
+    const nextSettings: ClaudeSettingsFile = { ...settings, env: nextEnv };
+    if (Object.keys(hooks).length > 0) nextSettings.hooks = hooks;
+    else delete nextSettings.hooks;
+    return nextSettings;
   }
 
   private readDesktopGatewayConfig(configPath: string): ClaudeDesktopGatewayFile {
