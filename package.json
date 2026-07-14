@@ -9,7 +9,8 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "build:gui": "npm run build && esbuild ./src/gui-preload.ts --bundle --platform=node --format=cjs --external:electron --outfile=dist/gui-preload.cjs && powershell -NoProfile -Command \"New-Item -ItemType Directory -Force dist\\gui | Out-Null; Copy-Item src\\gui\\* dist\\gui\\ -Recurse -Force\"",
+    "clean:dist": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
+    "build:gui": "npm run clean:dist && npm run build && esbuild ./src/electron-main.ts --bundle --platform=node --format=esm --external:electron --outfile=dist/electron-main.js && esbuild ./src/gui-preload.ts --bundle --platform=node --format=cjs --external:electron --outfile=dist/gui-preload.cjs && powershell -NoProfile -Command \"New-Item -ItemType Directory -Force dist\\gui | Out-Null; Copy-Item src\\gui\\* dist\\gui\\ -Recurse -Force\"",
     "bundle:pkg": "esbuild ././src/index.ts --bundle --platform=node --format=cjs --outfile=build/pkg/index.cjs",
     "dev": "tsx src/index.ts",
     "dev:gui": "npm run build:gui && electron .",

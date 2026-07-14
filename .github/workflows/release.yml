@@ -37,10 +37,11 @@ jobs:
           '{"vision":{"apiKey":"CCPROXY_RELEASE_SECRET_SENTINEL_02a48c"}}' | Set-Content -Encoding utf8 config.json
           "CCPROXY_SECRET_SENTINEL=CCPROXY_RELEASE_SECRET_SENTINEL_02a48c" | Out-File -FilePath $env:GITHUB_ENV -Append
 
-      - name: Build and verify portable package
-        run: |
-          npm run package:gui
-          npm run smoke:packaged
+      - name: Build sanitized portable package
+        run: npm run package:gui
+
+      - name: Packaged context-rescue smoke test
+        run: npm run smoke:packaged
 
       - name: Publish GitHub Release
         shell: pwsh
