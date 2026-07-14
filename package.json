@@ -1,6 +1,6 @@
 {
   "name": "ccproxy-agent",
-  "version": "0.4.93",
+  "version": "0.4.94",
   "description": "A Windows local context-protection gateway for Claude Code and Claude Desktop behind CC Switch.",
   "type": "module",
   "main": "dist/electron-main.js",
