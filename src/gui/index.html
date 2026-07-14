@@ -3,204 +3,388 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
   <title>CCProxy Agent</title>
   <style>
     :root {
-      font-family: Inter, "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
-      background: #f4f6f8;
-      color: #17202f;
-      line-height: 1.45;
+      font-family: Inter, ui-sans-serif, "Segoe UI Variable", "Segoe UI", "Microsoft YaHei UI", sans-serif;
+      color: #24211f;
+      background: #f7f6f3;
+      font-synthesis: none;
+      --bg: #f7f6f3;
+      --sidebar: #efede8;
+      --surface: #ffffff;
+      --surface-muted: #faf9f7;
+      --surface-hover: #f4f1ec;
+      --line: #e4e0d9;
+      --line-strong: #d5d0c7;
+      --text: #24211f;
+      --muted: #746f68;
+      --subtle: #9b958d;
+      --accent: #d97757;
+      --accent-dark: #bb5f42;
+      --accent-soft: #faeae4;
+      --green: #2f8f68;
+      --green-soft: #e8f5ef;
+      --amber: #b7791f;
+      --amber-soft: #fff5d9;
+      --red: #c24e46;
+      --red-soft: #fcecea;
+      --blue: #4b74b8;
+      --blue-soft: #edf3fc;
+      --shadow: 0 1px 2px rgba(54, 45, 36, .04), 0 8px 24px rgba(54, 45, 36, .035);
+    }
+    [data-theme="dark"] {
+      --bg: #191817;
+      --sidebar: #211f1d;
+      --surface: #252321;
+      --surface-muted: #2b2926;
+      --surface-hover: #312e2a;
+      --line: #3a3733;
+      --line-strong: #4a4640;
+      --text: #f3f0eb;
+      --muted: #b4ada3;
+      --subtle: #817a72;
+      --accent: #e58a69;
+      --accent-dark: #f19a79;
+      --accent-soft: #3d2923;
+      --green: #65c497;
+      --green-soft: #21382d;
+      --amber: #e5b65d;
+      --amber-soft: #3a3020;
+      --red: #ed8179;
+      --red-soft: #402724;
+      --blue: #83a8e5;
+      --blue-soft: #243149;
+      --shadow: 0 1px 2px rgba(0, 0, 0, .18), 0 10px 30px rgba(0, 0, 0, .12);
     }
     * { box-sizing: border-box; }
-    body { margin: 0; min-height: 100vh; overflow: hidden; }
+    html, body { margin: 0; min-width: 900px; min-height: 620px; height: 100%; overflow: hidden; }
+    body { color: var(--text); background: var(--bg); font-size: 14px; line-height: 1.5; }
     button, input, textarea, select { font: inherit; }
-    .app { display: grid; grid-template-columns: 248px 1fr; min-height: 100vh; }
-    aside { background: #111827; color: #e5edf7; padding: 20px 16px; display: flex; flex-direction: column; gap: 18px; }
-    .brand h1 { margin: 0; font-size: 20px; letter-spacing: 0; }
-    .brand p { margin: 6px 0 0; color: #9fb0c6; font-size: 13px; }
-    .nav { display: grid; gap: 8px; }
-    .nav button { width: 100%; min-height: 38px; border: 0; border-radius: 6px; padding: 0 12px; text-align: left; color: #c8d5e7; background: transparent; cursor: pointer; }
-    .nav button.active, .nav button:hover { background: #263449; color: #ffffff; }
-    .side-actions { margin-top: auto; display: grid; gap: 8px; }
-    .side-actions button { min-height: 36px; border: 1px solid #3b4b63; border-radius: 6px; background: #172235; color: #eef4fb; cursor: pointer; }
-    .side-actions button:hover { background: #22324a; }
-    main { height: 100vh; overflow: auto; padding: 22px 26px; }
-    .topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
-    h2 { margin: 0; font-size: 22px; letter-spacing: 0; }
-    .pill { display: inline-flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 12px; border: 1px solid #d3dbe6; border-radius: 6px; background: #ffffff; color: #293445; font-weight: 600; }
-    .dot { width: 9px; height: 9px; border-radius: 50%; background: #9aa5b1; }
-    .dot.ok { background: #13825f; }
-    .dot.off { background: #c0392b; }
-    .grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
-    .panel { background: #ffffff; border: 1px solid #dbe2eb; border-radius: 8px; box-shadow: 0 1px 2px rgba(16, 24, 40, .04); }
-    .metric { padding: 14px; min-height: 84px; }
-    .metric label { display: block; color: #66758a; font-size: 12px; margin-bottom: 8px; }
-    .metric strong { display: block; font-size: 14px; overflow-wrap: anywhere; }
-    .summary-grid { display: grid; grid-template-columns: minmax(280px, 0.95fr) minmax(360px, 1.35fr); gap: 14px; margin-bottom: 14px; }
-    .health-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding: 14px; }
-    .health-item { display: grid; grid-template-columns: 14px 1fr; gap: 10px; min-height: 72px; padding: 12px; border: 1px solid #e0e7ef; border-radius: 8px; background: #f8fafc; }
-    .health-item strong { display: block; font-size: 14px; margin-bottom: 4px; }
-    .health-item p { margin: 0; color: #66758a; font-size: 12px; overflow-wrap: anywhere; }
-    .health-dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 5px; background: #9aa5b1; }
-    .health-dot.ok { background: #13825f; }
-    .health-dot.warn { background: #b7791f; }
-    .health-dot.off { background: #c0392b; }
-    .event-list { display: grid; gap: 10px; padding: 14px; max-height: 274px; overflow: auto; }
-    .event { display: grid; grid-template-columns: 30px 1fr; gap: 10px; padding: 10px; border: 1px solid #e0e7ef; border-radius: 8px; background: #ffffff; }
-    .event.success { border-left: 3px solid #13825f; }
-    .event.warning { border-left: 3px solid #b7791f; }
-    .event.info { border-left: 3px solid #3b82f6; }
-    .event-icon { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 6px; background: #eef4fb; color: #27364a; font-weight: 700; }
-    .event-title { font-weight: 700; font-size: 13px; }
-    .event-summary { margin-top: 3px; color: #4e5e72; font-size: 12px; overflow-wrap: anywhere; }
-    .event-time { margin-top: 4px; color: #8190a3; font-size: 11px; }
-    .empty { color: #66758a; font-size: 13px; padding: 14px; }
-    .score { color: #66758a; font-size: 12px; }
-    .section { display: none; }
+    button { -webkit-tap-highlight-color: transparent; }
+    svg { display: block; }
+    .app { display: grid; grid-template-columns: 224px minmax(0, 1fr); height: 100vh; }
+    .sidebar { display: flex; flex-direction: column; padding: 18px 14px 14px; border-right: 1px solid var(--line); background: var(--sidebar); }
+    .brand { display: flex; align-items: center; gap: 11px; padding: 2px 8px 20px; }
+    .brand-mark { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; color: #fff; background: linear-gradient(145deg, #e38b6d, #c96548); box-shadow: 0 5px 12px rgba(202, 101, 72, .22); }
+    .brand-copy { min-width: 0; }
+    .brand-copy strong { display: block; font-size: 14px; letter-spacing: -.01em; }
+    .brand-copy span { display: block; color: var(--muted); font-size: 11px; margin-top: 1px; }
+    .nav-label { padding: 0 10px 7px; color: var(--subtle); font-size: 10px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; }
+    .nav { display: grid; gap: 4px; }
+    .nav-button { display: flex; align-items: center; gap: 11px; width: 100%; height: 40px; padding: 0 11px; border: 0; border-radius: 9px; color: var(--muted); background: transparent; cursor: pointer; text-align: left; transition: color .15s, background .15s, transform .15s; }
+    .nav-button svg { width: 17px; height: 17px; stroke-width: 1.8; }
+    .nav-button:hover { color: var(--text); background: var(--surface-hover); }
+    .nav-button:active { transform: translateY(1px); }
+    .nav-button.active { color: var(--text); background: var(--surface); box-shadow: 0 1px 2px rgba(48, 41, 34, .06); }
+    .sidebar-bottom { margin-top: auto; display: grid; gap: 10px; }
+    .proxy-mini { padding: 12px; border: 1px solid var(--line); border-radius: 12px; background: color-mix(in srgb, var(--surface) 72%, transparent); }
+    .proxy-mini-head { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; }
+    .proxy-mini strong { display: block; margin-top: 7px; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .side-footer { display: flex; align-items: center; justify-content: space-between; padding: 0 3px; color: var(--subtle); font-size: 11px; }
+    .icon-button { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 1px solid transparent; border-radius: 8px; color: var(--muted); background: transparent; cursor: pointer; }
+    .icon-button:hover { color: var(--text); border-color: var(--line); background: var(--surface); }
+    .content-shell { min-width: 0; height: 100vh; overflow: hidden; }
+    .topbar { display: flex; align-items: center; justify-content: space-between; height: 70px; padding: 0 30px; border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--bg) 92%, transparent); }
+    .page-heading h1 { margin: 0; font-size: 19px; font-weight: 680; letter-spacing: -.02em; }
+    .page-heading p { margin: 2px 0 0; color: var(--muted); font-size: 12px; }
+    .top-actions { display: flex; align-items: center; gap: 9px; }
+    .status-pill { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--muted); font-size: 12px; font-weight: 650; box-shadow: 0 1px 1px rgba(0,0,0,.02); }
+    .dot, .health-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--subtle); }
+    .dot.ok, .health-dot.ok { background: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
+    .dot.warn, .health-dot.warn { background: var(--amber); box-shadow: 0 0 0 3px var(--amber-soft); }
+    .dot.off, .health-dot.off { background: var(--red); box-shadow: 0 0 0 3px var(--red-soft); }
+    .main { height: calc(100vh - 70px); overflow: auto; padding: 24px 30px 42px; scrollbar-gutter: stable; }
+    .section { display: none; max-width: 1320px; margin: 0 auto; animation: enter .18s ease-out; }
     .section.active { display: block; }
-    .form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
-    .field { display: grid; gap: 6px; padding: 14px; }
-    .field label { font-size: 12px; color: #5f6d7f; }
-    input, textarea, select { width: 100%; border: 1px solid #cfd8e3; border-radius: 6px; background: #ffffff; color: #162133; padding: 8px 10px; }
-    textarea { min-height: 92px; resize: vertical; }
-    input[type="checkbox"] { width: 18px; height: 18px; }
-    .check { display: flex; align-items: center; gap: 10px; min-height: 37px; }
-    .full { grid-column: 1 / -1; }
-    .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border-bottom: 1px solid #e4eaf1; }
-    .toolbar h3 { margin: 0; font-size: 16px; letter-spacing: 0; }
-    .buttons { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-    .primary, .secondary, .danger { min-height: 34px; padding: 0 12px; border-radius: 6px; cursor: pointer; }
-    .primary { border: 1px solid #2463eb; background: #2463eb; color: #ffffff; }
-    .secondary { border: 1px solid #c7d1de; background: #ffffff; color: #17202f; }
-    .danger { border: 1px solid #e0a1a1; background: #fff8f8; color: #a32020; }
-    .primary:hover { background: #1d55cc; }
-    .secondary:hover { background: #f2f5f8; }
-    .danger:hover { background: #ffecec; }
-    pre { margin: 0; min-height: 460px; max-height: 64vh; overflow: auto; padding: 14px; background: #0d1117; color: #d8e0ec; border-radius: 0 0 8px 8px; font: 12px/1.55 Consolas, "Liberation Mono", monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
-    .notice { min-height: 34px; color: #526174; font-size: 13px; }
-    @media (max-width: 980px) {
-      .app { grid-template-columns: 1fr; }
-      aside { display: block; }
-      .nav, .side-actions { display: flex; flex-wrap: wrap; margin-top: 14px; }
-      .nav button, .side-actions button { width: auto; }
-      .grid, .form, .summary-grid, .health-grid { grid-template-columns: 1fr; }
+    @keyframes enter { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+    .hero { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(260px, .65fr); gap: 14px; margin-bottom: 14px; }
+    .card { border: 1px solid var(--line); border-radius: 14px; background: var(--surface); box-shadow: var(--shadow); }
+    .route-card { position: relative; min-height: 206px; padding: 22px; overflow: hidden; }
+    .route-card::after { content: ""; position: absolute; right: -55px; top: -80px; width: 220px; height: 220px; border-radius: 50%; background: var(--accent-soft); opacity: .55; pointer-events: none; }
+    .eyebrow { display: flex; align-items: center; gap: 7px; color: var(--accent-dark); font-size: 11px; font-weight: 750; letter-spacing: .07em; text-transform: uppercase; }
+    .route-card h2 { position: relative; z-index: 1; max-width: 650px; margin: 11px 0 6px; font-size: 24px; line-height: 1.25; letter-spacing: -.035em; }
+    .route-card > p { position: relative; z-index: 1; margin: 0; color: var(--muted); font-size: 13px; }
+    .route-flow { position: relative; z-index: 1; display: grid; grid-template-columns: minmax(0, 1fr) 26px minmax(0, 1fr) 26px minmax(0, 1fr); align-items: center; margin-top: 24px; }
+    .route-node { min-width: 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: color-mix(in srgb, var(--surface) 92%, var(--bg)); }
+    .route-node span { display: block; margin-bottom: 3px; color: var(--subtle); font-size: 10px; }
+    .route-node strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+    .route-arrow { color: var(--subtle); text-align: center; }
+    .control-card { display: flex; flex-direction: column; padding: 20px; }
+    .control-card h3 { margin: 0; font-size: 14px; }
+    .control-copy { margin: 5px 0 18px; color: var(--muted); font-size: 12px; }
+    .control-state { display: flex; align-items: center; gap: 10px; padding: 11px 12px; border-radius: 10px; background: var(--surface-muted); }
+    .control-state strong { display: block; font-size: 12px; }
+    .control-state span:last-child { display: block; color: var(--muted); font-size: 11px; }
+    .control-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: auto; padding-top: 16px; }
+    .button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 36px; padding: 0 13px; border: 1px solid var(--line-strong); border-radius: 9px; color: var(--text); background: var(--surface); cursor: pointer; font-weight: 620; font-size: 12px; transition: border-color .15s, background .15s, transform .1s, opacity .15s; }
+    .button:hover { background: var(--surface-hover); border-color: var(--subtle); }
+    .button:active { transform: translateY(1px); }
+    .button:disabled { cursor: not-allowed; opacity: .52; transform: none; }
+    .button.primary { color: #fff; border-color: var(--accent); background: var(--accent); }
+    .button.primary:hover { border-color: var(--accent-dark); background: var(--accent-dark); }
+    .button.danger { color: var(--red); border-color: color-mix(in srgb, var(--red) 35%, var(--line)); background: var(--red-soft); }
+    .button.full { grid-column: 1 / -1; }
+    .button svg { width: 14px; height: 14px; }
+    .stats-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
+    .stat-card { min-height: 94px; padding: 16px; }
+    .stat-card .label { display: flex; align-items: center; justify-content: space-between; color: var(--muted); font-size: 11px; }
+    .stat-card strong { display: block; margin-top: 10px; font-size: 13px; overflow-wrap: anywhere; }
+    .stat-icon { display: grid; place-items: center; width: 25px; height: 25px; border-radius: 7px; color: var(--accent-dark); background: var(--accent-soft); }
+    .stat-icon svg { width: 13px; height: 13px; }
+    .dashboard-grid { display: grid; grid-template-columns: minmax(300px, .8fr) minmax(420px, 1.2fr); gap: 14px; margin-bottom: 14px; }
+    .card-head { display: flex; align-items: center; justify-content: space-between; min-height: 52px; padding: 0 17px; border-bottom: 1px solid var(--line); }
+    .card-head h3 { margin: 0; font-size: 13px; font-weight: 680; }
+    .card-meta { color: var(--muted); font-size: 11px; }
+    .health-list { display: grid; padding: 8px; }
+    .health-item { display: grid; grid-template-columns: 13px minmax(0, 1fr); gap: 11px; padding: 11px 10px; border-radius: 9px; }
+    .health-item:hover { background: var(--surface-muted); }
+    .health-dot { width: 7px; height: 7px; margin-top: 6px; }
+    .health-item strong { display: block; font-size: 12px; }
+    .health-item p { margin: 2px 0 0; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+    .event-list { display: grid; gap: 0; max-height: 286px; overflow: auto; padding: 5px 8px 8px; }
+    .event { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto; gap: 10px; align-items: start; padding: 11px 9px; border-bottom: 1px solid var(--line); }
+    .event:last-child { border-bottom: 0; }
+    .event-icon { display: grid; place-items: center; width: 29px; height: 29px; border-radius: 8px; color: var(--blue); background: var(--blue-soft); font-size: 12px; font-weight: 750; }
+    .event.success .event-icon { color: var(--green); background: var(--green-soft); }
+    .event.warning .event-icon { color: var(--amber); background: var(--amber-soft); }
+    .event-title { font-size: 12px; font-weight: 670; }
+    .event-summary { margin-top: 2px; color: var(--muted); font-size: 11px; line-height: 1.45; overflow-wrap: anywhere; }
+    .event-time { padding-top: 2px; color: var(--subtle); font-size: 10px; white-space: nowrap; }
+    .empty { display: grid; place-items: center; min-height: 150px; padding: 24px; color: var(--muted); text-align: center; font-size: 12px; }
+    .log-preview { position: relative; }
+    .log-preview pre { max-height: 214px; }
+    pre { margin: 0; padding: 15px 17px; overflow: auto; color: #c9d1d9; background: #151718; font: 11px/1.65 "SFMono-Regular", Consolas, "Liberation Mono", monospace; white-space: pre-wrap; overflow-wrap: anywhere; tab-size: 2; }
+    .logs-card pre { min-height: calc(100vh - 210px); max-height: calc(100vh - 210px); border-radius: 0 0 14px 14px; }
+    .settings-layout { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 18px; }
+    .settings-index { position: sticky; top: 0; align-self: start; padding: 8px; }
+    .settings-index a { display: block; padding: 8px 9px; border-radius: 7px; color: var(--muted); text-decoration: none; font-size: 12px; }
+    .settings-index a:hover { color: var(--text); background: var(--surface-muted); }
+    .settings-stack { display: grid; gap: 14px; }
+    .settings-card { scroll-margin-top: 8px; }
+    .settings-card .card-head { padding: 12px 18px; }
+    .settings-title h3 { font-size: 13px; }
+    .settings-title p { margin: 2px 0 0; color: var(--muted); font-size: 11px; }
+    .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; }
+    .field { display: grid; gap: 6px; min-width: 0; padding: 14px 18px 16px; border-bottom: 1px solid var(--line); }
+    .field:nth-last-child(-n + 2) { border-bottom: 0; }
+    .field.full { grid-column: 1 / -1; }
+    .field.full:last-child { border-bottom: 0; }
+    .field label { color: var(--muted); font-size: 11px; font-weight: 620; }
+    .field-hint { color: var(--subtle); font-size: 10px; }
+    input, textarea, select { width: 100%; min-height: 36px; padding: 7px 10px; outline: none; border: 1px solid var(--line-strong); border-radius: 8px; color: var(--text); background: var(--surface); transition: border-color .15s, box-shadow .15s; }
+    input:focus, textarea:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+    textarea { min-height: 104px; resize: vertical; line-height: 1.55; }
+    input[type="checkbox"] { appearance: none; position: relative; width: 34px; height: 19px; min-height: 19px; padding: 0; border: 0; border-radius: 999px; background: var(--line-strong); cursor: pointer; transition: background .15s; }
+    input[type="checkbox"]::after { content: ""; position: absolute; top: 2px; left: 2px; width: 15px; height: 15px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.22); transition: transform .15s; }
+    input[type="checkbox"]:checked { background: var(--accent); }
+    input[type="checkbox"]:checked::after { transform: translateX(15px); }
+    .toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 36px; }
+    .toggle-copy strong { display: block; font-size: 12px; }
+    .toggle-copy span { display: block; margin-top: 2px; color: var(--muted); font-size: 10px; }
+    .save-bar { position: sticky; bottom: -30px; z-index: 4; display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 14px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: color-mix(in srgb, var(--surface) 94%, transparent); box-shadow: 0 -8px 24px rgba(50,43,36,.05); backdrop-filter: blur(12px); }
+    .save-bar span { color: var(--muted); font-size: 11px; }
+    .notice { position: fixed; right: 24px; bottom: 22px; z-index: 20; max-width: 380px; padding: 11px 14px; border: 1px solid var(--line); border-radius: 10px; color: var(--text); background: var(--surface); box-shadow: 0 12px 38px rgba(40,33,27,.16); font-size: 12px; opacity: 0; transform: translateY(8px); pointer-events: none; transition: opacity .18s, transform .18s; }
+    .notice.show { opacity: 1; transform: none; }
+    .notice.error { color: var(--red); border-color: color-mix(in srgb, var(--red) 35%, var(--line)); background: var(--red-soft); }
+    .kbd { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 19px; padding: 0 5px; border: 1px solid var(--line-strong); border-radius: 5px; color: var(--muted); background: var(--surface-muted); font-size: 10px; box-shadow: 0 1px 0 var(--line-strong); }
+    @media (max-width: 1100px) {
+      .hero { grid-template-columns: 1fr; }
+      .control-buttons { grid-template-columns: repeat(3, 1fr); }
+      .control-buttons .full { grid-column: auto; }
+      .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .dashboard-grid { grid-template-columns: 1fr; }
     }
+    @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation: none !important; transition: none !important; } }
   </style>
 </head>
 <body>
   <div class="app">
-    <aside>
+    <aside class="sidebar">
       <div class="brand">
-        <h1>CCProxy Agent</h1>
-        <p>单窗口代理控制台</p>
+        <div class="brand-mark" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M7.5 7.5 4 11l3.5 3.5M16.5 7.5 20 11l-3.5 3.5M14 4l-4 16" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+        <div class="brand-copy"><strong>CCProxy Agent</strong><span>Context Guard</span></div>
       </div>
-      <div class="nav">
-        <button class="active" data-page="overview">运行状态</button>
-        <button data-page="config">配置</button>
-        <button data-page="vision">多模态</button>
-        <button data-page="logs">日志</button>
-      </div>
-      <div class="side-actions">
-        <button id="startProxy">启动代理</button>
-        <button id="restartProxy">重启代理</button>
-        <button id="stopProxy">停止代理</button>
+
+      <div class="nav-label">控制台</div>
+      <nav class="nav" aria-label="主导航">
+        <button class="nav-button active" data-page="overview">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 13h6V4H4v9Zm0 7h6v-4H4v4Zm10 0h6v-9h-6v9Zm0-16v4h6V4h-6Z" stroke-linejoin="round"/></svg>
+          <span>运行概览</span>
+        </button>
+        <button class="nav-button" data-page="config">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 7h10M18 7h2M4 17h2m4 0h10M14 4v6M6 14v6" stroke-linecap="round"/></svg>
+          <span>代理设置</span>
+        </button>
+        <button class="nav-button" data-page="vision">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.6"/></svg>
+          <span>多模态</span>
+        </button>
+        <button class="nav-button" data-page="logs">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 4h14v16H5zM8 8h8M8 12h8M8 16h5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span>运行日志</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-bottom">
+        <div class="proxy-mini">
+          <div class="proxy-mini-head"><span id="sideStatusDot" class="dot"></span><span>本地守护进程</span></div>
+          <strong id="sideListen">等待状态</strong>
+        </div>
+        <div class="side-footer">
+          <span id="sideVersion">CCProxy Agent</span>
+          <button id="themeToggle" class="icon-button" title="切换主题" aria-label="切换主题">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
       </div>
     </aside>
 
-    <main>
-      <div class="topbar">
-        <h2 id="pageTitle">运行状态</h2>
-        <div class="pill"><span id="statusDot" class="dot"></span><span id="statusText">加载中</span></div>
-      </div>
+    <div class="content-shell">
+      <header class="topbar">
+        <div class="page-heading"><h1 id="pageTitle">运行概览</h1><p id="pageSubtitle">查看代理链路与上下文保护状态</p></div>
+        <div class="top-actions"><div class="status-pill"><span id="statusDot" class="dot"></span><span id="statusText">正在连接</span></div></div>
+      </header>
 
-      <section id="overview" class="section active">
-        <div class="grid">
-          <div class="panel metric"><label>监听地址</label><strong id="listen">-</strong></div>
-          <div class="panel metric"><label>上游</label><strong id="upstream">-</strong></div>
-          <div class="panel metric"><label>上游来源</label><strong id="source">-</strong></div>
-          <div class="panel metric"><label>进程</label><strong id="process">-</strong></div>
-        </div>
-        <div class="summary-grid">
-          <div class="panel">
-            <div class="toolbar"><h3>健康面板</h3><span id="healthScore" class="score">-</span></div>
-            <div id="healthGrid" class="health-grid"></div>
+      <main class="main">
+        <section id="overview" class="section active">
+          <div class="hero">
+            <article class="card route-card">
+              <div class="eyebrow"><span class="dot ok"></span>Local routing</div>
+              <h2>你的上下文保护链路</h2>
+              <p>在请求抵达 CC Switch 前完成预算检查、压缩提醒与多模态预处理。</p>
+              <div class="route-flow">
+                <div class="route-node"><span>客户端</span><strong>Claude Code / Desktop</strong></div>
+                <div class="route-arrow">→</div>
+                <div class="route-node"><span>保护层</span><strong id="routeListen">CCProxy Agent</strong></div>
+                <div class="route-arrow">→</div>
+                <div class="route-node"><span>上游</span><strong id="routeUpstream">CC Switch</strong></div>
+              </div>
+            </article>
+            <article class="card control-card">
+              <h3>代理控制</h3>
+              <p class="control-copy">启动后将自动接管本地请求链路。</p>
+              <div class="control-state"><span id="controlStatusDot" class="dot"></span><div><strong id="controlStatus">正在读取状态</strong><span id="controlDetail">请稍候</span></div></div>
+              <div class="control-buttons">
+                <button id="startProxy" class="button primary">启动</button>
+                <button id="restartProxy" class="button">重启</button>
+                <button id="stopProxy" class="button danger full">停止代理</button>
+              </div>
+            </article>
           </div>
-          <div class="panel">
-            <div class="toolbar"><h3>保护事件</h3><span id="protectionCount" class="score">-</span></div>
-            <div id="protectionEvents" class="event-list"></div>
-          </div>
-        </div>
-        <div class="panel">
-          <div class="toolbar"><h3>最近日志</h3><button class="secondary" data-page-jump="logs">查看全部</button></div>
-          <pre id="recentLogs"></pre>
-        </div>
-      </section>
 
-      <section id="config" class="section">
-        <div class="panel">
-          <div class="toolbar">
-            <h3>基础配置</h3>
-            <div class="buttons"><button id="saveConfig" class="primary">保存并重启</button></div>
+          <div class="stats-grid">
+            <article class="card stat-card"><div class="label"><span>监听地址</span><span class="stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 12h14M12 5l7 7-7 7"/></svg></span></div><strong id="listen">—</strong></article>
+            <article class="card stat-card"><div class="label"><span>上游地址</span><span class="stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="8"/><path d="M4 12h16M12 4a14 14 0 0 1 0 16M12 4a14 14 0 0 0 0 16"/></svg></span></div><strong id="upstream">—</strong></article>
+            <article class="card stat-card"><div class="label"><span>路由来源</span><span class="stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M7 7h10v10H7zM3 12h4m10 0h4M12 3v4m0 10v4"/></svg></span></div><strong id="source">—</strong></article>
+            <article class="card stat-card"><div class="label"><span>运行进程</span><span class="stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M8 8h8v8H8zM4 10h4m8 0h4M4 14h4m8 0h4M10 4v4m4-4v4m-4 8v4m4-4v4"/></svg></span></div><strong id="process">—</strong></article>
           </div>
-          <div class="form">
-            <div class="field"><label>监听主机</label><input id="serverHost"></div>
-            <div class="field"><label>监听端口</label><input id="serverPort" type="number" min="1" max="65535"></div>
-            <div class="field"><label>自动切换端口</label><div class="check"><input id="serverAutoPort" type="checkbox"><span>端口占用时自动顺延</span></div></div>
-            <div class="field"><label>自动发现上游</label><div class="check"><input id="upstreamAutoDiscover" type="checkbox"><span>上游不可达时扫描本地端口</span></div></div>
-            <div class="field full"><label>上游 Base URL</label><input id="upstreamBaseUrl"></div>
-            <div class="field"><label>上游 Chat Path</label><input id="upstreamChatPath"></div>
-            <div class="field"><label>超时 ms</label><input id="upstreamTimeout" type="number" min="1000"></div>
-            <div class="field"><label>Compact 阈值</label><input id="compactThreshold" type="number" min="1"></div>
-            <div class="field"><label>上下文硬上限</label><input id="hardLimit" type="number" min="1"></div>
-            <div class="field"><label>安全余量</label><input id="safetyMargin" type="number" min="0"></div>
-            <div class="field"><label>Claude 原生自动压缩</label><div class="check"><input id="autoCompactEnabled" type="checkbox"><span>为新启动的 CLI 会话提前触发 compact</span></div></div>
-            <div class="field"><label>Compact 预留 token</label><input id="autoCompactReserveTokens" type="number" min="1000"></div>
-            <div class="field"><label>工具循环观察</label><div class="check"><input id="hookObserverEnabled" type="checkbox"><span>只记录指纹和截断状态，不阻断工具</span></div></div>
-            <div class="field"><label>结构化工具结果清理</label><div class="check"><input id="toolResultClearingEnabled" type="checkbox"><span>保留工具配对，只清理较老结果正文</span></div></div>
-            <div class="field"><label>工具清理触发 token</label><input id="toolResultClearTrigger" type="number" min="1000"></div>
-            <div class="field"><label>工具清理目标 token</label><input id="toolResultClearTarget" type="number" min="1000"></div>
-            <div class="field"><label>保留最近工具结果</label><input id="toolResultKeepRecent" type="number" min="1"></div>
-          </div>
-        </div>
-      </section>
 
-      <section id="vision" class="section">
-        <div class="panel">
-          <div class="toolbar">
-            <h3>多模态配置</h3>
-            <div class="buttons"><button id="saveVision" class="primary">保存并重启</button></div>
+          <div class="dashboard-grid">
+            <article class="card"><div class="card-head"><h3>系统健康</h3><span id="healthScore" class="card-meta">等待检查</span></div><div id="healthGrid" class="health-list"></div></article>
+            <article class="card"><div class="card-head"><h3>最近保护事件</h3><span id="protectionCount" class="card-meta">0 条</span></div><div id="protectionEvents" class="event-list"></div></article>
           </div>
-          <div class="form">
-            <div class="field"><label>启用多模态预处理</label><div class="check"><input id="visionEnabled" type="checkbox"><span>图片先转文字摘要再发给下游</span></div></div>
-            <div class="field"><label>比较多个视觉模型</label><div class="check"><input id="visionCompare" type="checkbox"><span>同时调用 models 列表</span></div></div>
-            <div class="field full"><label>视觉 Base URL</label><input id="visionBaseUrl"></div>
-            <div class="field"><label>视觉 Chat Path</label><input id="visionChatPath"></div>
-            <div class="field"><label>默认视觉模型</label><input id="visionModel"></div>
-            <div class="field full"><label>视觉模型列表，逗号分隔</label><input id="visionModels"></div>
-            <div class="field"><label>API Key 环境变量名</label><input id="visionApiKeyEnv"></div>
-            <div class="field"><label>超时 ms</label><input id="visionTimeout" type="number" min="1000"></div>
-            <div class="field"><label>每次最多图片数</label><input id="visionMaxImages" type="number" min="1"></div>
-            <div class="field"><label>单图最大字节</label><input id="visionMaxBytes" type="number" min="1"></div>
-            <div class="field"><label>摘要 max_tokens</label><input id="visionSummaryTokens" type="number" min="1"></div>
-            <div class="field"><label>摘要后移除原图</label><div class="check"><input id="visionStripImages" type="checkbox"><span>避免非视觉模型收到图片块</span></div></div>
-            <div class="field full"><label>视觉系统提示词</label><textarea id="visionSystemPrompt"></textarea></div>
-          </div>
-        </div>
-      </section>
 
-      <section id="logs" class="section">
-        <div class="panel">
-          <div class="toolbar">
-            <h3>运行日志</h3>
-            <div class="buttons"><button id="clearLogs" class="secondary">清空显示</button></div>
-          </div>
-          <pre id="logsBox"></pre>
-        </div>
-      </section>
+          <article class="card log-preview">
+            <div class="card-head"><h3>实时日志</h3><button class="button" data-page-jump="logs">查看全部</button></div>
+            <pre id="recentLogs">等待日志…</pre>
+          </article>
+        </section>
 
-      <div id="notice" class="notice"></div>
-    </main>
+        <section id="config" class="section">
+          <div class="settings-layout">
+            <nav class="card settings-index" aria-label="设置分组"><a href="#networkSettings">网络与上游</a><a href="#guardSettings">上下文保护</a><a href="#claudeSettings">Claude 集成</a></nav>
+            <div>
+              <div class="settings-stack">
+                <article id="networkSettings" class="card settings-card">
+                  <div class="card-head"><div class="settings-title"><h3>网络与上游</h3><p>定义本地监听端口以及 CC Switch 的转发地址。</p></div></div>
+                  <div class="form-grid">
+                    <div class="field"><label for="serverHost">监听主机</label><input id="serverHost" spellcheck="false" placeholder="127.0.0.1"><span class="field-hint">建议仅监听本机回环地址</span></div>
+                    <div class="field"><label for="serverPort">监听端口</label><input id="serverPort" type="number" min="1" max="65535" inputmode="numeric"></div>
+                    <div class="field full"><div class="toggle-row"><div class="toggle-copy"><strong>端口占用时自动顺延</strong><span>自动寻找下一个可用的本地端口</span></div><input id="serverAutoPort" type="checkbox" aria-label="自动切换端口"></div></div>
+                    <div class="field full"><label for="upstreamBaseUrl">上游 Base URL</label><input id="upstreamBaseUrl" spellcheck="false" placeholder="http://127.0.0.1:15721"></div>
+                    <div class="field"><label for="upstreamChatPath">Chat Path</label><input id="upstreamChatPath" spellcheck="false" placeholder="/v1/chat/completions"></div>
+                    <div class="field"><label for="upstreamTimeout">请求超时（毫秒）</label><input id="upstreamTimeout" type="number" min="1000" inputmode="numeric"></div>
+                    <div class="field full"><div class="toggle-row"><div class="toggle-copy"><strong>自动发现上游</strong><span>上游不可达时扫描本地 CC Switch 端口</span></div><input id="upstreamAutoDiscover" type="checkbox" aria-label="自动发现上游"></div></div>
+                  </div>
+                </article>
+
+                <article id="guardSettings" class="card settings-card">
+                  <div class="card-head"><div class="settings-title"><h3>上下文保护</h3><p>在模型拒绝请求之前主动控制 Token 预算。</p></div></div>
+                  <div class="form-grid">
+                    <div class="field"><label for="compactThreshold">Compact 提醒阈值</label><input id="compactThreshold" type="number" min="1" inputmode="numeric"></div>
+                    <div class="field"><label for="hardLimit">上下文硬上限</label><input id="hardLimit" type="number" min="1" inputmode="numeric"></div>
+                    <div class="field"><label for="safetyMargin">安全余量</label><input id="safetyMargin" type="number" min="0" inputmode="numeric"></div>
+                    <div class="field"><label for="toolResultKeepRecent">保留最近工具结果</label><input id="toolResultKeepRecent" type="number" min="0" inputmode="numeric"></div>
+                    <div class="field"><label for="toolResultClearTrigger">工具结果清理触发值</label><input id="toolResultClearTrigger" type="number" min="1" inputmode="numeric"></div>
+                    <div class="field"><label for="toolResultClearTarget">工具结果清理目标值</label><input id="toolResultClearTarget" type="number" min="1" inputmode="numeric"></div>
+                    <div class="field full"><div class="toggle-row"><div class="toggle-copy"><strong>自动清理旧工具结果</strong><span>优先保留最近结果，释放长会话中的冗余上下文</span></div><input id="toolResultClearingEnabled" type="checkbox" aria-label="自动清理旧工具结果"></div></div>
+                  </div>
+                </article>
+
+                <article id="claudeSettings" class="card settings-card">
+                  <div class="card-head"><div class="settings-title"><h3>Claude 集成</h3><p>对 Claude Code 的原生 Compact 与 Hook 状态进行协同。</p></div></div>
+                  <div class="form-grid">
+                    <div class="field full"><div class="toggle-row"><div class="toggle-copy"><strong>启用原生 Auto Compact</strong><span>自动为 Claude Code 写入上下文保留策略</span></div><input id="autoCompactEnabled" type="checkbox" aria-label="启用原生 Auto Compact"></div></div>
+                    <div class="field full"><label for="autoCompactReserveTokens">Auto Compact 保留 Token</label><input id="autoCompactReserveTokens" type="number" min="1" inputmode="numeric"></div>
+                    <div class="field full"><div class="toggle-row"><div class="toggle-copy"><strong>观察 Claude Hook</strong><span>收集工具调用与原生 Compact 事件用于诊断</span></div><input id="hookObserverEnabled" type="checkbox" aria-label="观察 Claude Hook"></div></div>
+                  </div>
+                </article>
+              </div>
+              <div class="save-bar"><span>保存后代理会自动重启以应用新配置</span><button id="saveConfig" class="button primary">保存并重启 <span class="kbd">Ctrl S</span></button></div>
+            </div>
+          </div>
+        </section>
+
+        <section id="vision" class="section">
+          <div class="settings-layout">
+            <nav class="card settings-index" aria-label="多模态设置分组"><a href="#visionCore">视觉路由</a><a href="#visionLimits">请求限制</a><a href="#visionPrompt">系统提示词</a></nav>
+            <div>
+              <div class="settings-stack">
+                <article id="visionCore" class="card settings-card">
+                  <div class="card-head"><div class="settings-title"><h3>视觉路由</h3><p>先由视觉模型理解图片，再将结构化摘要转交文本模型。</p></div></div>
+                  <div class="form-grid">
+                    <div class="field full"><div class="toggle-row"><div class="toggle-copy"><strong>启用多模态预处理</strong><span>检测到图片时自动调用视觉端点</span></div><input id="visionEnabled" type="checkbox" aria-label="启用多模态预处理"></div></div>
+                    <div class="field full"><div class="toggle-row"><div class="toggle-copy"><strong>并行比较多个模型</strong><span>对 models 列表中的视觉模型同时发起分析</span></div><input id="visionCompare" type="checkbox" aria-label="并行比较多个模型"></div></div>
+                    <div class="field full"><label for="visionBaseUrl">视觉 Base URL</label><input id="visionBaseUrl" spellcheck="false"></div>
+                    <div class="field"><label for="visionChatPath">Chat Path</label><input id="visionChatPath" spellcheck="false"></div>
+                    <div class="field"><label for="visionModel">默认视觉模型</label><input id="visionModel" spellcheck="false"></div>
+                    <div class="field full"><label for="visionModels">比较模型列表</label><input id="visionModels" spellcheck="false" placeholder="model-a, model-b"><span class="field-hint">使用英文逗号分隔多个模型名称</span></div>
+                    <div class="field full"><label for="visionApiKeyEnv">API Key 环境变量名</label><input id="visionApiKeyEnv" spellcheck="false" placeholder="VISION_API_KEY"></div>
+                  </div>
+                </article>
+
+                <article id="visionLimits" class="card settings-card">
+                  <div class="card-head"><div class="settings-title"><h3>请求限制</h3><p>控制视觉请求的容量、时延与摘要长度。</p></div></div>
+                  <div class="form-grid">
+                    <div class="field"><label for="visionTimeout">请求超时（毫秒）</label><input id="visionTimeout" type="number" min="1000" inputmode="numeric"></div>
+                    <div class="field"><label for="visionMaxImages">每次最多图片数</label><input id="visionMaxImages" type="number" min="1" inputmode="numeric"></div>
+                    <div class="field"><label for="visionMaxBytes">单图最大字节数</label><input id="visionMaxBytes" type="number" min="1" inputmode="numeric"></div>
+                    <div class="field"><label for="visionSummaryTokens">摘要 max_tokens</label><input id="visionSummaryTokens" type="number" min="1" inputmode="numeric"></div>
+                    <div class="field full"><div class="toggle-row"><div class="toggle-copy"><strong>摘要后移除原图</strong><span>避免不支持视觉的文本模型再次收到图片块</span></div><input id="visionStripImages" type="checkbox" aria-label="摘要后移除原图"></div></div>
+                  </div>
+                </article>
+
+                <article id="visionPrompt" class="card settings-card">
+                  <div class="card-head"><div class="settings-title"><h3>视觉系统提示词</h3><p>约束图片摘要的结构、细节与输出语言。</p></div></div>
+                  <div class="form-grid"><div class="field full"><label for="visionSystemPrompt">System Prompt</label><textarea id="visionSystemPrompt" spellcheck="false"></textarea></div></div>
+                </article>
+              </div>
+              <div class="save-bar"><span>保存后代理会自动重启以应用新配置</span><button id="saveVision" class="button primary">保存并重启 <span class="kbd">Ctrl S</span></button></div>
+            </div>
+          </div>
+        </section>
+
+        <section id="logs" class="section">
+          <article class="card logs-card"><div class="card-head"><div><h3>运行日志</h3><span class="card-meta">最多显示最近 1,000 条</span></div><button id="clearLogs" class="button">清空显示</button></div><pre id="logsBox">等待日志…</pre></article>
+        </section>
+      </main>
+    </div>
   </div>
+  <div id="notice" class="notice" role="status" aria-live="polite"></div>
   <script src="./renderer.js"></script>
 </body>
 </html>

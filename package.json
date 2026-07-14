@@ -79,6 +79,7 @@
       "package.json"
     ],
     "win": {
+      "icon": "build/icon.png",
       "target": [
         "portable"
       ],

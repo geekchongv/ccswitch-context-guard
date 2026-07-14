@@ -7,13 +7,14 @@ import { Orchestrator } from "./orchestrator.js";
 import { createServer } from "./server.js";
 import { ClaudeConfigPatcher } from "./claude-config-patcher.js";
 import { resolveFreePort } from "./port-resolver.js";
+import { APP_VERSION } from "./version.js";
 import { discoverUpstream } from "./upstream-discoverer.js";
 import { AppConfig } from "./types.js";
 import { DashboardStatus } from "./dashboard.js";
 import { HookObserver } from "./hook-observer.js";
 
 const MAX_PORT_TRIES = 100;
-const VERSION = "0.4.93";
+const VERSION = APP_VERSION;
 
 export type ProxyStatus = DashboardStatus;
 

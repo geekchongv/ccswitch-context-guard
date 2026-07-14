@@ -85,12 +85,12 @@ async function restartProxy(reason: string): Promise<void> {
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
-    width: 1180,
-    height: 760,
-    minWidth: 940,
+    width: 1240,
+    height: 800,
+    minWidth: 900,
     minHeight: 620,
     title: "CCProxy Agent",
-    backgroundColor: "#f5f7fa",
+    backgroundColor: "#f7f6f3",
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(app.getAppPath(), "dist", "gui-preload.cjs"),
