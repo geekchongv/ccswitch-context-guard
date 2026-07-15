@@ -198,6 +198,10 @@ export class ClaudeConfigPatcher {
   }
 
   public startDesktopGatewayWatch(): void {
+    if (!this.config.claudeDesktopConfigPatch.enabled) {
+      this.logger.debug("Desktop gateway drift watch disabled with Desktop patching");
+      return;
+    }
     const interval = this.config.claudeDesktopConfigPatch.desktopWatchIntervalMs ?? 5000;
     if (interval <= 0) {
       this.logger.debug("Desktop gateway drift watch disabled", { intervalMs: interval });

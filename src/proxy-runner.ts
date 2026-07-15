@@ -30,6 +30,7 @@ export interface ProxyHandle {
 export interface StartProxyOptions {
   onStatus?: (status: ProxyStatus) => void;
   openDashboard?: boolean;
+  config?: AppConfig;
 }
 
 function openDashboard(url: string, logger: Logger): void {
@@ -58,7 +59,7 @@ function openDashboard(url: string, logger: Logger): void {
 }
 
 export async function startProxy(options: StartProxyOptions = {}): Promise<ProxyHandle> {
-  const config = loadConfig();
+  const config = options.config ?? loadConfig();
   const logger = new Logger(config.logging);
   const sessionStore = new SessionStore(config.runtime.directory);
   const orchestrator = new Orchestrator(config, logger, sessionStore);

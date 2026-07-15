@@ -5,19 +5,28 @@ import { LogEntry } from "./logger.js";
 import { ProxyStatus } from "./proxy-runner.js";
 import { HealthSummary, ProtectionEvent } from "./product-insights.js";
 
+type RendererConfig = AppConfig & {
+  vision: AppConfig["vision"] & { apiKeyConfigured: boolean };
+};
+
+interface SecretUpdate {
+  visionApiKey?: string;
+  clearVisionApiKey?: boolean;
+}
+
 contextBridge.exposeInMainWorld("ccproxy", {
   getState: () => ipcRenderer.invoke("app:getState") as Promise<{
     status: ProxyStatus | null;
-    config: AppConfig;
+    config: RendererConfig;
     logs: LogEntry[];
     insights: {
       health: HealthSummary;
       events: ProtectionEvent[];
     };
   }>,
-  saveConfig: (config: AppConfig) => ipcRenderer.invoke("app:saveConfig", config) as Promise<{
+  saveConfig: (config: AppConfig, secretUpdate?: SecretUpdate) => ipcRenderer.invoke("app:saveConfig", config, secretUpdate) as Promise<{
     status: ProxyStatus | null;
-    config: AppConfig;
+    config: RendererConfig;
   }>,
   restartProxy: () => ipcRenderer.invoke("app:restartProxy") as Promise<ProxyStatus | null>,
   stopProxy: () => ipcRenderer.invoke("app:stopProxy") as Promise<boolean>,

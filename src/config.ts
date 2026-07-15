@@ -17,6 +17,10 @@ const defaultConfig: AppConfig = {
     timeoutMs: 120000,
     aiRoutes: ["/v1/chat/completions", "/v1/messages"],
     autoDiscover: true,
+    adaptiveRateLimit: true,
+    maxConcurrentRequests: 2,
+    rateLimitFallbackDelayMs: 60_000,
+    rateLimitMaxRetries: 1,
   },
   tokenPolicy: {
     compactThreshold: 90000,
@@ -70,7 +74,7 @@ const defaultConfig: AppConfig = {
     hookObserverEnabled: true,
   },
   claudeDesktopConfigPatch: {
-    enabled: true,
+    enabled: process.platform === "win32",
     configLibraryPath: path.join(process.env.LOCALAPPDATA ?? path.join(os.homedir(), "AppData", "Local"), "Claude-3p", "configLibrary"),
   },
 };
@@ -125,6 +129,9 @@ export function loadConfig(): AppConfig {
 
 export function saveConfig(config: AppConfig): void {
   const configPath = getConfigPath();
+  const persisted = structuredClone(config);
+  delete persisted.vision.apiKey;
+  delete (persisted.vision as AppConfig["vision"] & { apiKeyConfigured?: boolean }).apiKeyConfigured;
   mkdirSync(path.dirname(configPath), { recursive: true });
-  writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+  writeFileSync(configPath, `${JSON.stringify(persisted, null, 2)}\n`, "utf8");
 }

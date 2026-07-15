@@ -160,3 +160,24 @@ test("extractProtectionEvents surfaces structural tool-result clearing", () => {
   assert.equal(events[0]?.severity, "success");
   assert.match(events[0]?.summary ?? "", /198,977 -> 149,500/);
 });
+
+test("extractProtectionEvents surfaces adaptive 429 cooldown and recovery", () => {
+  const events = extractProtectionEvents([
+    {
+      timestamp: "2026-07-15T00:00:00.000Z",
+      level: "warn",
+      message: "Upstream rate limit detected",
+      metadata: { retryDelayMs: 60_000, concurrencyLimit: 1 },
+    },
+    {
+      timestamp: "2026-07-15T00:01:00.000Z",
+      level: "info",
+      message: "Upstream rate limit retry succeeded",
+      metadata: { status: 200, attempt: 1 },
+    },
+  ]);
+  assert.deepEqual(events.map((event) => event.kind), ["rate_limit", "rate_limit"]);
+  assert.equal(events[0]?.severity, "warning");
+  assert.match(events[0]?.summary ?? "", /60 seconds/);
+  assert.equal(events[1]?.severity, "success");
+});

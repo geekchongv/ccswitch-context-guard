@@ -53,10 +53,11 @@ fs.writeFileSync(configPath, `${JSON.stringify({
   claudeDesktopConfigPatch: { enabled: false },
 }, null, 2)}\n`, "utf8");
 
-const child = spawn(exePath, [], {
+const child = spawn(exePath, ["--disable-gpu", "--in-process-gpu", `--user-data-dir=${path.join(portableTemp, "user-data")}`], {
   env: {
     ...process.env,
     CCPROXY_CONFIG: configPath,
+    CCPROXY_HEADLESS: "1",
     TEMP: portableTemp,
     TMP: portableTemp,
   },
@@ -92,7 +93,7 @@ async function waitForHealth() {
   const deadline = Date.now() + 30_000;
   while (Date.now() < deadline) {
     try {
-      const response = await fetch(`http://127.0.0.1:${proxyPort}/health`);
+      const response = await fetch(`http://127.0.0.1:${proxyPort}/health`, { signal: AbortSignal.timeout(1_000) });
       if (response.ok) return response.json();
     } catch {}
     await new Promise((resolve) => setTimeout(resolve, 300));
@@ -106,6 +107,7 @@ try {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(payload()),
+    signal: AbortSignal.timeout(30_000),
   });
   const body = await response.text();
   if (!response.ok || !body.includes("packaged rescue ok")) {

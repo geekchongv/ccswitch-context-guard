@@ -127,7 +127,7 @@ export function createServer(
   orchestrator: Orchestrator,
   options: ServerOptions = {},
 ): http.Server {
-  const upstreamClient = new UpstreamClient(config.upstream);
+  const upstreamClient = new UpstreamClient(config.upstream, logger);
 
   return http.createServer(async (request, response) => {
     try {

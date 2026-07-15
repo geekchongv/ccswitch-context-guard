@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.4.97
+
+- Added macOS Intel and Apple Silicon release builds in DMG and ZIP formats, with macOS-native writable configuration paths.
+- Added GUI-managed Vision API keys encrypted by Electron safe storage (Windows DPAPI / macOS Keychain), with legacy environment-variable fallback retained for CLI users.
+- Added adaptive local-gateway 429 protection: bounded concurrency, shared cooldown, `Retry-After` support, serialized internal retry, and visible recovery events.
+- Expanded CI and tag releases to validate and package on both Windows and macOS, then publish combined checksums.
+- Added regression tests for rate-limit recovery, post-429 serialization, secret redaction, and UI configuration references.
+
 ## v0.4.95
 
 - Rebuilt the Electron interface as a polished CC Switch-style desktop control center with a clear routing overview, health status, protection events, grouped settings, and live logs.

@@ -10,6 +10,7 @@ release/
 release-gui*/
 *.exe
 *.zip
+*.dmg
 
 # Local runtime data
 logs/
@@ -19,6 +20,7 @@ test-output/
 
 # Local config and experiments
 config.json
+secrets.json
 test-configs/
 tmp-compact-prompt.txt
 

@@ -19,10 +19,13 @@ CCProxy Agent is a local proxy. It can observe request and response bodies that 
 Do not publish:
 
 - `config.json`
+- `secrets.json` (encrypted locally, but still device-specific private data)
 - `logs/`
 - `runtime/`
 - packaged personal builds
 - Claude settings files
 - provider tokens or API keys
+
+Desktop Vision API keys are encrypted through Electron safe storage, backed by Windows DPAPI or macOS Keychain. The plaintext key is injected only into the in-memory proxy configuration and is not returned to the renderer or written to `config.json`.
 
 If you used an affected personal build, delete it and rotate any credential that may have been stored in its adjacent `config.json`.

@@ -246,7 +246,7 @@ export class Orchestrator {
     private readonly logger: Logger,
     private readonly sessionStore: SessionStore,
   ) {
-    this.upstreamClient = new UpstreamClient(config.upstream);
+    this.upstreamClient = new UpstreamClient(config.upstream, logger);
   }
 
   private async postStatelessWithContextRetry(

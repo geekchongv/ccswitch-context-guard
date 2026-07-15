@@ -6,7 +6,7 @@ import { spawnSync } from "node:child_process";
 const root = process.cwd();
 const metadata = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
 const outputDirectory = `release-gui-v${metadata.version}`;
-const artifactPath = path.join(root, outputDirectory, `CCProxy-Agent-v${metadata.version}.exe`);
+const target = process.argv.includes("--mac") ? "mac" : "win";
 const builderCli = path.join(root, "node_modules", "electron-builder", "cli.js");
 const npmCli = process.env.npm_execpath;
 const secretValidator = path.join(root, "scripts", "validate-package-secrets.mjs");
@@ -29,16 +29,29 @@ try {
   }
   fs.rmSync(resolvedOutput, { recursive: true, force: true });
   run(process.execPath, [npmCli, "run", "build:gui"]);
-  run(process.execPath, [builderCli, "--win", "portable", `--config.directories.output=${outputDirectory}`]);
+  const builderArgs = target === "mac"
+    ? ["--mac", "dmg", "zip", "--x64", "--arm64", `--config.directories.output=${outputDirectory}`]
+    : ["--win", "portable", `--config.directories.output=${outputDirectory}`];
+  run(process.execPath, [builderCli, ...builderArgs]);
   fs.copyFileSync(path.join(root, "config.example.json"), path.join(root, outputDirectory, "config.example.json"));
   run(process.execPath, [secretValidator, "--release-dir", outputDirectory]);
 
-  const artifact = fs.statSync(artifactPath);
-  if (!artifact.isFile() || artifact.size === 0) throw new Error(`missing or empty artifact: ${artifactPath}`);
-  const sha256 = crypto.createHash("sha256").update(fs.readFileSync(artifactPath)).digest("hex");
+  const extensions = target === "mac" ? new Set([".dmg", ".zip"]) : new Set([".exe"]);
+  const artifacts = fs.readdirSync(path.join(root, outputDirectory))
+    .filter((name) => name.startsWith(`CCProxy-Agent-v${metadata.version}`) && extensions.has(path.extname(name)))
+    .map((name) => path.join(root, outputDirectory, name));
+  if (artifacts.length === 0) throw new Error(`missing ${target} artifacts in ${outputDirectory}`);
+  for (const artifactPath of artifacts) {
+    const artifact = fs.statSync(artifactPath);
+    if (!artifact.isFile() || artifact.size === 0) throw new Error(`missing or empty artifact: ${artifactPath}`);
+  }
+  const checksums = artifacts.map((artifactPath) => {
+    const sha256 = crypto.createHash("sha256").update(fs.readFileSync(artifactPath)).digest("hex");
+    return `${sha256}  ${path.basename(artifactPath)}`;
+  });
   const checksumPath = path.join(root, outputDirectory, "SHA256SUMS.txt");
-  fs.writeFileSync(checksumPath, `${sha256}  ${path.basename(artifactPath)}\n`, "utf8");
-  console.log(JSON.stringify({ artifactPath, bytes: artifact.size, sha256, checksumPath }, null, 2));
+  fs.writeFileSync(checksumPath, `${checksums.join("\n")}\n`, "utf8");
+  console.log(JSON.stringify({ target, artifacts, checksumPath }, null, 2));
 } catch (error) {
   console.error(error instanceof Error ? error.stack : String(error));
   process.exit(1);

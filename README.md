@@ -91,17 +91,23 @@ The proxy intercepts `/v1/messages` and `/v1/chat/completions`, applies guardrai
 | 🔍 | **Upstream auto-discovery** | Finds a reachable local ccswitch when the configured upstream is down |
 | 📊 | **Built-in dashboard** | Optional status, routing, process info & live logs at the active proxy URL |
 | 🪵 | **Local Chinese logs** | Human-readable `Token预算评估` / `已自动降低max_tokens` style messages |
-| 📦 | **Windows exe packaging** | Ship a portable `CCProxy-Agent.exe` |
+| 📦 | **Windows + macOS packaging** | Ship a portable Windows EXE plus macOS DMG/ZIP builds |
 
 ## 🚀 Quick Start
 
 ### Windows portable app
 
-1. Download `CCProxy-Agent-v0.4.93.exe` from the [latest GitHub Release](https://github.com/geekchongv/ccswitch-context-guard/releases/latest).
+1. Download `CCProxy-Agent-v0.4.97.exe` from the [latest GitHub Release](https://github.com/geekchongv/ccswitch-context-guard/releases/latest).
 2. Run the EXE. On first startup it creates a secret-free `config.json` beside the executable.
 3. Configure CC Switch and optional Vision settings in the desktop UI.
 
 The release also includes `config.example.json` and `SHA256SUMS.txt`. Private `config.json` files are never included in release artifacts.
+
+### macOS app
+
+1. Download the `arm64` build for Apple Silicon or `x64` for Intel Macs from the latest release.
+2. Open the DMG and move CCProxy Agent to Applications, or extract the ZIP.
+3. This first macOS build is unsigned. If Gatekeeper blocks it, Control-click the app and choose **Open**. Configuration is stored under the app's macOS user-data directory, never inside the read-only app bundle.
 
 ### From source
 
@@ -206,7 +212,7 @@ Agent requests containing `tools`, `tool_use`, or `tool_result` are never sent t
 }
 ```
 
-Set the key via env var (don't commit it):
+Desktop users can enter the API key directly on the **Multimodal** page. It is encrypted with Windows DPAPI or macOS Keychain-backed Electron safe storage and is never returned to the renderer. The environment variable remains an optional CLI fallback:
 
 ```powershell
 [Environment]::SetEnvironmentVariable("CCPROXY_VISION_API_KEY", "your-token", "User")
@@ -248,6 +254,7 @@ npm test           # run test suite
 npm run build      # compile TS → dist
 npm run check:gui  # validate desktop UI references
 npm run package:gui   # build sanitized portable Windows EXE
+npm run package:gui:mac # build macOS DMG + ZIP (run on macOS)
 npm run smoke:packaged # run the real packaged context-rescue smoke test
 ```
 
@@ -255,6 +262,7 @@ npm run smoke:packaged # run the real packaged context-rescue smoke test
 
 - 📐 [Design](docs/design.md)
 - ✅ [Validation](docs/validation.md)
+- 🧭 [Next release assessment](docs/next-release-assessment.md)
 - 📚 [Architecture and Operations Wiki](https://github.com/geekchongv/ccswitch-context-guard/wiki)
 - 📦 [Latest Release](https://github.com/geekchongv/ccswitch-context-guard/releases/latest)
 - 📝 [Full Changelog](CHANGELOG.md)
@@ -265,7 +273,8 @@ CCProxy Agent is a **local** proxy — it can see prompts/responses passing thro
 
 - ✅ Logs and session snapshots are local-only
 - ✅ Release builds reject private `config.json` files and configured secret bytes
-- ✅ Vision API keys should use `CCPROXY_VISION_API_KEY`
+- ✅ Desktop Vision API keys are encrypted with the operating-system credential service
+- ✅ CLI users can still use `CCPROXY_VISION_API_KEY` without writing a key to config
 - 🚫 **Never commit** your `config.json`, `runtime/`, `logs/`, or personal builds
 
 See [SECURITY.md](SECURITY.md) for details.
@@ -277,11 +286,12 @@ See [SECURITY.md](SECURITY.md) for details.
 - Tool-loop hooks are observe-only and require a Claude Code version with HTTP hook support
 - Claude Desktop does not expose the same CLI hook lifecycle and receives base proxy protection only
 - Agent rescue preserves protocol structure but cannot guarantee lossless recovery after the provider hard limit is exceeded
-- Multimodal summarization requires explicit configuration and a Vision API key
+- Multimodal summarization requires explicit endpoint, model, and Vision API key configuration
 - Compact reminders on SSE responses are currently buffered before rewriting
 - Chunking is a fallback, not a full long-task planning engine
 - Configuration restart is not yet transactional; invalid settings can leave the proxy stopped until corrected
-- The portable desktop release is **Windows-first**; macOS and Linux binaries are not currently published
+- macOS builds are currently unsigned; Apple notarization requires release signing credentials
+- Linux desktop binaries are not currently published
 
 ---
 

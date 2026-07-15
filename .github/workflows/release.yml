@@ -9,51 +9,89 @@ permissions:
   contents: write
 
 jobs:
-  release:
+  windows:
     runs-on: windows-latest
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-
-      - name: Install dependencies
-        run: npm ci
-
+      - run: npm ci
       - name: Validate source and tests
         run: |
           npm run check
           npm test
           npm run check:gui
-
       - name: Create packaging secret sentinel
         shell: pwsh
         run: |
           '{"vision":{"apiKey":"CCPROXY_RELEASE_SECRET_SENTINEL_02a48c"}}' | Set-Content -Encoding utf8 config.json
           "CCPROXY_SECRET_SENTINEL=CCPROXY_RELEASE_SECRET_SENTINEL_02a48c" | Out-File -FilePath $env:GITHUB_ENV -Append
-
-      - name: Build sanitized portable package
+      - name: Build sanitized Windows package
         run: npm run package:gui
-
       - name: Packaged context-rescue smoke test
         run: npm run smoke:packaged
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-windows
+          path: |
+            release-gui-v*/CCProxy-Agent-v*.exe
+            release-gui-v*/config.example.json
+          if-no-files-found: error
 
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Validate source and tests on macOS
+        run: |
+          npm run check
+          npm test
+          npm run check:gui
+      - name: Create packaging secret sentinel
+        run: |
+          printf '%s\n' '{"vision":{"apiKey":"CCPROXY_RELEASE_SECRET_SENTINEL_02a48c"}}' > config.json
+          echo 'CCPROXY_SECRET_SENTINEL=CCPROXY_RELEASE_SECRET_SENTINEL_02a48c' >> "$GITHUB_ENV"
+      - name: Build sanitized macOS DMG and ZIP
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: npm run package:gui:mac
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-macos
+          path: |
+            release-gui-v*/CCProxy-Agent-v*.dmg
+            release-gui-v*/CCProxy-Agent-v*.zip
+          if-no-files-found: error
+
+  publish:
+    needs: [windows, macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: release-assets
+          merge-multiple: true
+      - name: Generate combined checksums
+        run: |
+          cd release-assets
+          sha256sum CCProxy-Agent-v* | sort > SHA256SUMS.txt
       - name: Publish GitHub Release
-        shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
-          $dir = "release-gui-v$version"
-          gh release create "v$version" `
-            "$dir/CCProxy-Agent-v$version.exe" `
-            "$dir/SHA256SUMS.txt" `
-            "$dir/config.example.json" `
-            --title "CCProxy Agent v$version" `
-            --notes-file "docs/ccproxy-agent-v$version-release.md" `
-            --verify-tag
+          version=$(node -p "require('./package.json').version")
+          gh release create "v$version" \
+            release-assets/CCProxy-Agent-v* \
+            release-assets/SHA256SUMS.txt \
+            release-assets/config.example.json \
+            --title "CCProxy Agent v$version" \
+            --notes-file "docs/ccproxy-agent-v$version-release.md"

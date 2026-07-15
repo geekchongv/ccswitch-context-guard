@@ -353,7 +353,9 @@
                     <div class="field"><label for="visionChatPath">Chat Path</label><input id="visionChatPath" spellcheck="false"></div>
                     <div class="field"><label for="visionModel">默认视觉模型</label><input id="visionModel" spellcheck="false"></div>
                     <div class="field full"><label for="visionModels">比较模型列表</label><input id="visionModels" spellcheck="false" placeholder="model-a, model-b"><span class="field-hint">使用英文逗号分隔多个模型名称</span></div>
-                    <div class="field full"><label for="visionApiKeyEnv">API Key 环境变量名</label><input id="visionApiKeyEnv" spellcheck="false" placeholder="VISION_API_KEY"></div>
+                    <div class="field full"><label for="visionApiKey">API Key</label><input id="visionApiKey" type="password" autocomplete="new-password" spellcheck="false" placeholder="留空则保留当前密钥"><span id="visionApiKeyStatus" class="field-hint">尚未配置安全密钥</span></div>
+                    <div class="field full"><div class="toggle-row"><div class="toggle-copy"><strong>清除已保存的 API Key</strong><span>保存后从系统安全存储中永久删除</span></div><input id="visionClearApiKey" type="checkbox" aria-label="清除已保存的 API Key"></div></div>
+                    <div class="field full"><label for="visionApiKeyEnv">环境变量回退（可选）</label><input id="visionApiKeyEnv" spellcheck="false" placeholder="CCPROXY_VISION_API_KEY"><span class="field-hint">桌面端优先使用系统安全存储；命令行模式仍可使用环境变量</span></div>
                   </div>
                 </article>
 

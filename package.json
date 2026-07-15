@@ -1,6 +1,6 @@
 {
   "name": "ccproxy-agent",
-  "version": "0.4.95",
+  "version": "0.4.97",
   "description": "A Windows local context-protection gateway for Claude Code and Claude Desktop behind CC Switch.",
   "type": "module",
   "main": "dist/electron-main.js",
@@ -10,7 +10,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "clean:dist": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\"",
-    "build:gui": "npm run clean:dist && npm run build && esbuild ./src/electron-main.ts --bundle --platform=node --format=esm --external:electron --outfile=dist/electron-main.js && esbuild ./src/gui-preload.ts --bundle --platform=node --format=cjs --external:electron --outfile=dist/gui-preload.cjs && powershell -NoProfile -Command \"New-Item -ItemType Directory -Force dist\\gui | Out-Null; Copy-Item src\\gui\\* dist\\gui\\ -Recurse -Force\"",
+    "build:gui": "npm run clean:dist && npm run build && node scripts/build-gui.mjs",
     "bundle:pkg": "esbuild ././src/index.ts --bundle --platform=node --format=cjs --outfile=build/pkg/index.cjs",
     "dev": "tsx src/index.ts",
     "dev:gui": "npm run build:gui && electron .",
@@ -22,7 +22,9 @@
     "probe": "tsx src/probe.ts",
     "test": "tsx --test src/**/*.test.ts",
     "package:exe": "npm run build && npm run bundle:pkg && pkg build/pkg/index.cjs --targets node18-win-x64 --output release/ccproxy-agent.exe && powershell -NoProfile -Command \"New-Item -ItemType Directory -Force release | Out-Null; Copy-Item config.json release\\config.json -Force\"",
-    "package:gui": "node scripts/package-gui.mjs"
+    "package:gui": "node scripts/package-gui.mjs --win",
+    "package:gui:mac": "node scripts/package-gui.mjs --mac",
+    "build:icon": "node scripts/render-icon.mjs"
   },
   "keywords": [
     "proxy",
@@ -84,6 +86,16 @@
         "portable"
       ],
       "artifactName": "CCProxy-Agent-v${version}.${ext}"
+    },
+    "mac": {
+      "icon": "build/icon.png",
+      "category": "public.app-category.developer-tools",
+      "identity": null,
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "artifactName": "CCProxy-Agent-v${version}-${arch}.${ext}"
     }
   },
   "dependencies": {

@@ -24,6 +24,7 @@ export type ProtectionEventKind =
   | "budget"
   | "max_tokens"
   | "retry"
+  | "rate_limit"
   | "compact"
   | "chunk"
   | "tool"
@@ -75,7 +76,7 @@ function score(items: HealthItem[]): HealthSummary["score"] {
 export function buildHealthSummary(input: BuildHealthSummaryInput): HealthSummary {
   const { status, config, env = process.env } = input;
   const visionEnvName = config.vision.apiKeyEnv;
-  const visionKeyAvailable = Boolean(visionEnvName && env[visionEnvName]);
+  const visionKeyAvailable = Boolean(config.vision.apiKey || (visionEnvName && env[visionEnvName]));
   const items: HealthItem[] = [
     {
       id: "proxy",
@@ -113,6 +114,28 @@ export function buildHealthSummary(input: BuildHealthSummaryInput): HealthSummar
 export function extractProtectionEvents(entries: LogEntry[], limit = 12): ProtectionEvent[] {
   const events = entries.flatMap((entry): ProtectionEvent[] => {
     const data = metadata(entry);
+
+    if (entry.message === "Upstream rate limit detected") {
+      return [{
+        timestamp: entry.timestamp,
+        kind: "rate_limit",
+        severity: "warning",
+        title: "Upstream cooldown started",
+        summary: `HTTP 429 detected; requests serialized for ${Math.ceil((numberValue(data.retryDelayMs) ?? 0) / 1000)} seconds`,
+        metadata: entry.metadata,
+      }];
+    }
+
+    if (entry.message === "Upstream rate limit retry succeeded") {
+      return [{
+        timestamp: entry.timestamp,
+        kind: "rate_limit",
+        severity: "success",
+        title: "Upstream recovered",
+        summary: `Queued retry completed with HTTP ${String(data.status ?? "unknown")}`,
+        metadata: entry.metadata,
+      }];
+    }
 
     if (entry.message === "Token预算评估") {
       return [{

@@ -13,7 +13,11 @@
       "/v1/chat/completions",
       "/v1/messages"
     ],
-    "autoDiscover": true
+    "autoDiscover": true,
+    "adaptiveRateLimit": true,
+    "maxConcurrentRequests": 2,
+    "rateLimitFallbackDelayMs": 60000,
+    "rateLimitMaxRetries": 1
   },
   "tokenPolicy": {
     "compactThreshold": 90000,

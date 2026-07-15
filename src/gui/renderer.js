@@ -106,7 +106,7 @@ function renderHealth() {
 }
 
 function eventIcon(kind) {
-  return { budget: "B", max_tokens: "↘", retry: "R", compact: "C", tool: "T", chunk: "S", vision: "V", request: "✓" }[kind] || "·";
+  return { budget: "B", max_tokens: "↘", retry: "R", rate_limit: "⏱", compact: "C", tool: "T", chunk: "S", vision: "V", request: "✓" }[kind] || "·";
 }
 
 function renderProtectionEvents() {
@@ -193,6 +193,11 @@ function fillForm() {
   $("visionChatPath").value = config.vision.chatPath;
   $("visionModel").value = config.vision.model;
   $("visionModels").value = (config.vision.models || []).join(", ");
+  $("visionApiKey").value = "";
+  $("visionClearApiKey").checked = false;
+  $("visionApiKeyStatus").textContent = config.vision.apiKeyConfigured
+    ? "已安全保存；输入新值可替换，留空则保持不变"
+    : "尚未配置安全密钥";
   $("visionApiKeyEnv").value = config.vision.apiKeyEnv || "";
   $("visionTimeout").value = config.vision.timeoutMs;
   $("visionMaxImages").value = config.vision.maxImagesPerRequest;
@@ -243,6 +248,8 @@ function validateConfig(next) {
   if (!next.upstream.baseUrl) return "请填写上游 Base URL。";
   if (next.tokenPolicy.compactThreshold >= next.tokenPolicy.hardLimit) return "Compact 提醒阈值必须小于上下文硬上限。";
   if (next.tokenPolicy.toolResultClearTarget >= next.tokenPolicy.toolResultClearTrigger) return "工具结果清理目标值必须小于触发值。";
+  if (next.vision.enabled && !val("visionApiKey") && !config.vision.apiKeyConfigured && !next.vision.apiKeyEnv) return "启用多模态前请填写 API Key，或配置环境变量回退。";
+  if (next.vision.enabled && bool("visionClearApiKey") && !val("visionApiKey") && !next.vision.apiKeyEnv) return "清除 API Key 后多模态将无法调用；请先关闭多模态或配置环境变量回退。";
   return null;
 }
 
@@ -256,7 +263,10 @@ async function saveAndRestart() {
   setLoading(true);
   setNotice("正在保存配置并重启代理…");
   try {
-    const result = await api.saveConfig(next);
+    const result = await api.saveConfig(next, {
+      visionApiKey: val("visionApiKey") || undefined,
+      clearVisionApiKey: bool("visionClearApiKey"),
+    });
     config = result.config;
     status = result.status;
     fillForm();
@@ -348,6 +358,12 @@ $("stopProxy").addEventListener("click", async () => {
   }
 });
 $("clearLogs").addEventListener("click", () => { logs = []; renderLogs(); setNotice("日志显示已清空，不影响磁盘日志。"); });
+$("visionApiKey").addEventListener("input", () => {
+  if ($("visionApiKey").value) $("visionClearApiKey").checked = false;
+});
+$("visionClearApiKey").addEventListener("change", () => {
+  if ($("visionClearApiKey").checked) $("visionApiKey").value = "";
+});
 $("themeToggle").addEventListener("click", () => applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark"));
 document.addEventListener("keydown", (event) => {
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s" && (activePage === "config" || activePage === "vision")) {

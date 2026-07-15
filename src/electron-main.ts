@@ -6,10 +6,27 @@ import { AppConfig } from "./types.js";
 import { loadConfig, saveConfig } from "./config.js";
 import { setBaseDirectory } from "./paths.js";
 import { buildHealthSummary, extractProtectionEvents } from "./product-insights.js";
+import {
+  clearVisionApiKey,
+  hasVisionApiKey,
+  readVisionApiKey,
+  saveVisionApiKey,
+} from "./secret-store.js";
 
 let mainWindow: BrowserWindow | null = null;
 let proxyHandle: ProxyHandle | null = null;
 let isQuitting = false;
+const headless = process.env.CCPROXY_HEADLESS === "1";
+
+// The control center is text/forms only. Software rendering avoids driver-specific
+// GPU crashes on managed Windows desktops and headless packaging verification.
+app.disableHardwareAcceleration();
+if (process.platform === "win32") {
+  // Electron's helper GPU process can be blocked on managed Windows images.
+  // With hardware acceleration disabled, keeping software compositing in-process
+  // avoids a fatal helper crash without exposing remote content to the renderer.
+  app.commandLine.appendSwitch("in-process-gpu");
+}
 
 function getRendererPath(): string {
   return path.join(app.getAppPath(), "dist", "gui", "index.html");
@@ -26,7 +43,39 @@ function getPackagedBaseDirectory(): string {
     return path.dirname(portableExecutableFile);
   }
 
+  if (process.platform === "darwin") {
+    return app.getPath("userData");
+  }
+
   return path.dirname(process.execPath);
+}
+
+function loadRuntimeConfig(): AppConfig {
+  const config = loadConfig();
+  if (config.vision.apiKey && !hasVisionApiKey()) {
+    try {
+      saveVisionApiKey(config.vision.apiKey);
+      saveConfig(config);
+    } catch {
+      // Keep the legacy in-memory key usable if the OS keychain is temporarily unavailable.
+    }
+  }
+  const storedApiKey = readVisionApiKey();
+  if (storedApiKey) config.vision.apiKey = storedApiKey;
+  return config;
+}
+
+function rendererConfig(config: AppConfig): AppConfig & {
+  vision: AppConfig["vision"] & { apiKeyConfigured: boolean };
+} {
+  const safeConfig = structuredClone(config) as AppConfig & {
+    vision: AppConfig["vision"] & { apiKeyConfigured: boolean };
+  };
+  delete safeConfig.vision.apiKey;
+  safeConfig.vision.apiKeyConfigured = hasVisionApiKey() || Boolean(config.vision.apiKey) || Boolean(
+    config.vision.apiKeyEnv && process.env[config.vision.apiKeyEnv],
+  );
+  return safeConfig;
 }
 
 function sendToWindow(channel: string, payload: unknown): void {
@@ -37,7 +86,7 @@ function sendToWindow(channel: string, payload: unknown): void {
 }
 
 function getInsights() {
-  const config = proxyHandle?.config ?? loadConfig();
+  const config = proxyHandle?.config ?? loadRuntimeConfig();
   const logs = proxyHandle?.logger.snapshot() ?? [];
   return {
     health: buildHealthSummary({
@@ -64,6 +113,7 @@ async function stopProxy(reason: string): Promise<void> {
 
 async function startGuiProxy(): Promise<void> {
   proxyHandle = await startProxy({
+    config: loadRuntimeConfig(),
     openDashboard: false,
     onStatus: (status) => {
       sendToWindow("proxy:status", status);
@@ -115,17 +165,25 @@ function createWindow(): void {
 
 ipcMain.handle("app:getState", () => ({
   status: proxyHandle?.getStatus() ?? null,
-  config: proxyHandle?.config ?? loadConfig(),
+  config: rendererConfig(proxyHandle?.config ?? loadRuntimeConfig()),
   logs: proxyHandle?.logger.snapshot() ?? [],
   insights: getInsights(),
 }));
 
-ipcMain.handle("app:saveConfig", async (_event, config: AppConfig) => {
+ipcMain.handle("app:saveConfig", async (_event, config: AppConfig, secretUpdate?: {
+  visionApiKey?: string;
+  clearVisionApiKey?: boolean;
+}) => {
+  if (secretUpdate?.visionApiKey?.trim()) {
+    saveVisionApiKey(secretUpdate.visionApiKey);
+  } else if (secretUpdate?.clearVisionApiKey) {
+    clearVisionApiKey();
+  }
   saveConfig(config);
   await restartProxy("config-save");
   return {
     status: proxyHandle?.getStatus() ?? null,
-    config: proxyHandle?.config ?? loadConfig(),
+    config: rendererConfig(proxyHandle?.config ?? loadRuntimeConfig()),
   };
 });
 
@@ -148,7 +206,7 @@ ipcMain.handle("app:startProxy", async () => {
 
 app.whenReady().then(async () => {
   setBaseDirectory(app.isPackaged ? getPackagedBaseDirectory() : process.cwd());
-  createWindow();
+  if (!headless) createWindow();
   await startGuiProxy();
 });
 

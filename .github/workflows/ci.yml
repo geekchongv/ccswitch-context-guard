@@ -56,3 +56,33 @@ jobs:
             release-gui-v*/SHA256SUMS.txt
             release-gui-v*/config.example.json
           if-no-files-found: error
+
+  macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Type check and test on macOS
+        run: |
+          npm run check
+          npm test
+          npm run check:gui
+      - name: Create packaging secret sentinel
+        run: |
+          printf '%s\n' '{"vision":{"apiKey":"CCPROXY_CI_SECRET_SENTINEL_7f36d1"}}' > config.json
+          echo 'CCPROXY_SECRET_SENTINEL=CCPROXY_CI_SECRET_SENTINEL_7f36d1' >> "$GITHUB_ENV"
+      - name: Build macOS DMG and ZIP
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: npm run package:gui:mac
+      - uses: actions/upload-artifact@v4
+        with:
+          name: CCProxy-Agent-macOS-${{ github.sha }}
+          path: |
+            release-gui-v*/CCProxy-Agent-v*.dmg
+            release-gui-v*/CCProxy-Agent-v*.zip
+          if-no-files-found: error

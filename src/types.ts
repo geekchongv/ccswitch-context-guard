@@ -21,6 +21,14 @@ export interface UpstreamConfig {
   aiRoutes?: string[];
   /** 若为 true,配置的上游不可达时自动扫描本地候选端口(默认 true)。 */
   autoDiscover?: boolean;
+  /** 首次 429 后启用共享冷却并降低并发，避免客户端重试风暴。 */
+  adaptiveRateLimit?: boolean;
+  /** 未触发限流时允许的最大并发请求数。 */
+  maxConcurrentRequests?: number;
+  /** 网关未返回 Retry-After 时使用的冷却时间。 */
+  rateLimitFallbackDelayMs?: number;
+  /** 429 后由代理内部执行的最大重试次数。 */
+  rateLimitMaxRetries?: number;
 }
 
 export interface TokenPolicyConfig {

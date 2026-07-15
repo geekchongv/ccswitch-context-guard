@@ -24,6 +24,9 @@ The proxy is considered acceptable for v0.2 use when all items below pass.
 16. A replay of `198977 input + 1024 output` succeeds after one structural retry through the real HTTP proxy route.
 10. Requests over the hard limit trigger staged chunk execution.
 11. Image-bearing requests trigger vision preprocessing when `vision.enabled = true`.
+12. A local-gateway HTTP 429 starts a shared cooldown, honors `Retry-After`, retries once, and serializes later requests.
+13. Desktop Vision API keys are never persisted to `config.json` or returned as renderer configuration state.
+14. Windows and macOS CI jobs type-check, test, validate GUI references, and scan packaged output for secrets.
 12. Orchestration records are written into `runtime/sessions/`.
 13. Logs are written into `logs/ccproxy-agent.log`.
 
