@@ -48,7 +48,7 @@ jobs:
         run: npm run smoke:packaged
 
       - name: Upload verified portable artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: CCProxy-Agent-${{ github.sha }}
           path: |
@@ -79,7 +79,7 @@ jobs:
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
         run: npm run package:gui:mac
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: CCProxy-Agent-macOS-${{ github.sha }}
           path: |
