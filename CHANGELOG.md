@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.4.95
+
+- Rebuilt the Electron interface as a polished CC Switch-style desktop control center with a clear routing overview, health status, protection events, grouped settings, and live logs.
+- Fixed the corrupted Chinese interface text and added accessible labels, empty states, inline validation, keyboard shortcuts, loading feedback, and persistent light/dark themes.
+- Added a project-owned application icon for Windows packages and updated the default window dimensions for the new information architecture.
+- Replaced the stale hard-coded runtime version with `package.json` as the single source of truth so packaged UI and release metadata remain synchronized.
+- Preserved the existing proxy, configuration, insight, and IPC contracts; all 71 automated tests and packaged secret checks continue to pass.
+
 ## v0.4.93
 
 - Removed private `config.json` from every package path and added first-start generation of a secret-free local config.
