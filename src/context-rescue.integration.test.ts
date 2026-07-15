@@ -15,6 +15,12 @@ async function readBody(request: http.IncomingMessage): Promise<ChatCompletionRe
   return JSON.parse(Buffer.concat(chunks).toString("utf8")) as ChatCompletionRequest;
 }
 
+function closeServer(server: http.Server): Promise<void> {
+  return new Promise((resolve, reject) => {
+    server.close((error) => error ? reject(error) : resolve());
+  });
+}
+
 function configFor(upstreamPort: number): AppConfig {
   return {
     server: { host: "127.0.0.1", port: 0, autoPort: false },
@@ -126,9 +132,7 @@ test("HTTP proxy rescues an Agent context error and returns the retry response",
     assert.match(retryText, /middle of tool result truncated|large source output/);
     assert.equal(upstreamBodies[1]?.max_tokens, 1024);
   } finally {
-    proxy.close();
-    upstream.close();
-    await Promise.all([once(proxy, "close"), once(upstream, "close")]);
+    await Promise.all([closeServer(proxy), closeServer(upstream)]);
   }
 });
 
@@ -159,8 +163,6 @@ test("HTTP proxy rejects oversized request bodies with 413", async () => {
     assert.equal(response.status, 413);
     assert.match(await response.text(), /request body too large/);
   } finally {
-    proxy.close();
-    upstream.close();
-    await Promise.all([once(proxy, "close"), once(upstream, "close")]);
+    await Promise.all([closeServer(proxy), closeServer(upstream)]);
   }
 });
