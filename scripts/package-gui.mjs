@@ -32,7 +32,7 @@ try {
   const builderArgs = target === "mac"
     ? ["--mac", "dmg", "zip", "--x64", "--arm64", `--config.directories.output=${outputDirectory}`]
     : ["--win", "portable", `--config.directories.output=${outputDirectory}`];
-  run(process.execPath, [builderCli, ...builderArgs]);
+  run(process.execPath, [builderCli, ...builderArgs, "--publish", "never"]);
   fs.copyFileSync(path.join(root, "config.example.json"), path.join(root, outputDirectory, "config.example.json"));
   run(process.execPath, [secretValidator, "--release-dir", outputDirectory]);
 
