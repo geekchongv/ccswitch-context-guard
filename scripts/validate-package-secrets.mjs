@@ -13,7 +13,9 @@ function filesBelow(directory) {
   if (!fs.existsSync(directory)) return [];
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const entryPath = path.join(directory, entry.name);
-    return entry.isDirectory() ? filesBelow(entryPath) : [entryPath];
+    if (entry.isSymbolicLink()) return [];
+    if (entry.isDirectory()) return filesBelow(entryPath);
+    return entry.isFile() ? [entryPath] : [];
   });
 }
 

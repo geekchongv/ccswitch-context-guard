@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 
 const sentinel = "CCPROXY_TEST_SECRET_SENTINEL_92f614";
@@ -41,4 +41,23 @@ test("package secret validator rejects private config and secret bytes", () => {
   const result = runValidator(relativeRoot);
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /private config\.json/);
+});
+
+test("package secret validator ignores directory symlinks without reading them as files", (t) => {
+  const relativeRoot = path.join("test-output", "package-security-symlink");
+  const root = path.resolve(relativeRoot);
+  const realDirectory = path.join(root, "real-directory");
+  rmSync(root, { recursive: true, force: true });
+  mkdirSync(realDirectory, { recursive: true });
+  writeFileSync(path.join(realDirectory, "app.asar"), "clean package", "utf8");
+
+  try {
+    symlinkSync(realDirectory, path.join(root, "linked-directory"), process.platform === "win32" ? "junction" : "dir");
+  } catch (error) {
+    t.skip(`directory symlinks unavailable: ${String(error)}`);
+    return;
+  }
+
+  const result = runValidator(relativeRoot);
+  assert.equal(result.status, 0, result.stderr);
 });
