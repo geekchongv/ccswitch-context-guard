@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import { once } from "node:events";
 import { ChatCompletionRequest, VisionConfig } from "./types.js";
-import { enrichRequestWithVision } from "./modality-router.js";
+import { enrichRequestWithVision, getVisionInputDiagnostics, hasImageInput } from "./modality-router.js";
 
 async function readJson(request: http.IncomingMessage): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = [];
@@ -96,4 +96,145 @@ test("enrichRequestWithVision calls both configured vision models and strips ima
     upstream.close();
     await once(upstream, "close");
   }
+});
+
+test("enrichRequestWithVision accepts Claude Desktop image source URLs", async () => {
+  const seenImageUrls: string[] = [];
+  const upstream = http.createServer(async (request, response) => {
+    const body = await readJson(request);
+    const messages = body.messages as Array<{ content?: Array<{ image_url?: { url?: string } }> }>;
+    const imagePart = messages
+      .flatMap((message) => message.content ?? [])
+      .find((part) => part.image_url);
+    if (imagePart?.image_url?.url) {
+      seenImageUrls.push(imagePart.image_url.url);
+    }
+
+    response.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+    response.end(JSON.stringify({ choices: [{ message: { content: "desktop image ok" } }] }));
+  });
+
+  upstream.listen(0, "127.0.0.1");
+  await once(upstream, "listening");
+  const address = upstream.address();
+  assert.ok(address && typeof address === "object");
+
+  try {
+    const config = {
+      ...buildVisionConfig(address.port),
+      models: ["qwen3-vl-30b-a3b-instruct"],
+      compareModels: false,
+    };
+    const request: ChatCompletionRequest = {
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "read this screenshot" },
+            {
+              type: "image",
+              source: {
+                type: "url",
+                url: "http://127.0.0.1:15722/claude-desktop/files/screenshot.png",
+              },
+            },
+          ],
+        },
+      ],
+    };
+
+    assert.equal(hasImageInput(request), true);
+    const result = await enrichRequestWithVision(request, config);
+
+    assert.equal(result.vision.used, true);
+    assert.deepEqual(seenImageUrls, ["http://127.0.0.1:15722/claude-desktop/files/screenshot.png"]);
+    assert.match(JSON.stringify(result.request.messages), /VISION SUMMARY/);
+  } finally {
+    upstream.close();
+    await once(upstream, "close");
+  }
+});
+
+test("enrichRequestWithVision accepts OpenAI input_image image_url objects", async () => {
+  const seenImageUrls: string[] = [];
+  const upstream = http.createServer(async (request, response) => {
+    const body = await readJson(request);
+    const messages = body.messages as Array<{ content?: Array<{ image_url?: { url?: string } }> }>;
+    const imagePart = messages
+      .flatMap((message) => message.content ?? [])
+      .find((part) => part.image_url);
+    if (imagePart?.image_url?.url) {
+      seenImageUrls.push(imagePart.image_url.url);
+    }
+
+    response.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+    response.end(JSON.stringify({ choices: [{ message: { content: "input image ok" } }] }));
+  });
+
+  upstream.listen(0, "127.0.0.1");
+  await once(upstream, "listening");
+  const address = upstream.address();
+  assert.ok(address && typeof address === "object");
+
+  try {
+    const config = {
+      ...buildVisionConfig(address.port),
+      models: ["qwen3-vl-30b-a3b-instruct"],
+      compareModels: false,
+    };
+    const request: ChatCompletionRequest = {
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "input_text", text: "what changed?" },
+            {
+              type: "input_image",
+              image_url: {
+                url: "data:image/png;base64,ZmFrZS1pbWFnZQ==",
+              },
+            },
+          ],
+        },
+      ],
+    };
+
+    assert.equal(hasImageInput(request), true);
+    const result = await enrichRequestWithVision(request, config);
+
+    assert.equal(result.vision.used, true);
+    assert.deepEqual(seenImageUrls, ["data:image/png;base64,ZmFrZS1pbWFnZQ=="]);
+  } finally {
+    upstream.close();
+    await once(upstream, "close");
+  }
+});
+
+test("getVisionInputDiagnostics reports unsupported image-like parts without leaking payloads", () => {
+  const request: ChatCompletionRequest = {
+    messages: [
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "diagnose upload" },
+          {
+            type: "image",
+            source: {
+              type: "file",
+              file_id: "file-secret-id",
+            },
+          } as unknown as Record<string, string>,
+        ],
+      },
+    ],
+  };
+
+  const diagnostics = getVisionInputDiagnostics(request);
+
+  assert.equal(hasImageInput(request), false);
+  assert.equal(diagnostics.supportedImageCount, 0);
+  assert.equal(diagnostics.imageLikePartCount, 1);
+  assert.deepEqual(diagnostics.imageLikePartTypes, ["image"]);
+  assert.deepEqual(diagnostics.imageLikePartKeys, ["source", "type"]);
+  assert.doesNotMatch(JSON.stringify(diagnostics), /file-secret-id/);
 });

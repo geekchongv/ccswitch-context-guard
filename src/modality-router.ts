@@ -20,6 +20,13 @@ interface ImageExtraction {
   textHints: string[];
 }
 
+export interface VisionInputDiagnostics {
+  supportedImageCount: number;
+  imageLikePartCount: number;
+  imageLikePartTypes: string[];
+  imageLikePartKeys: string[];
+}
+
 type OpenAiVisionContentPart =
   | {
       type: "text";
@@ -41,6 +48,39 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object";
 }
 
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function urlFromImageUrlValue(value: unknown): string | undefined {
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (isRecord(value)) {
+    return stringValue(value.url);
+  }
+
+  return undefined;
+}
+
+function imageFromData(data: string, mediaType = "image/png"): ExtractedImage {
+  if (/^data:image\/[a-z0-9.+-]+;base64,/i.test(data)) {
+    const [, parsedMediaType, parsedData] = data.match(/^data:([^;]+);base64,(.+)$/i) ?? [];
+    return {
+      url: data,
+      mediaType: parsedMediaType,
+      bytes: parsedData ? estimateBase64Bytes(parsedData) : undefined,
+    };
+  }
+
+  return {
+    url: `data:${mediaType};base64,${data}`,
+    mediaType,
+    bytes: estimateBase64Bytes(data),
+  };
+}
+
 function partText(part: ChatMessagePart): string | null {
   if ("text" in part && typeof part.text === "string") {
     return part.text;
@@ -51,31 +91,68 @@ function partText(part: ChatMessagePart): string | null {
 
 function imageFromPart(part: ChatMessagePart): ExtractedImage | null {
   const typed = part as ChatMessagePartImage;
+  const source = isRecord(typed.source) ? typed.source : undefined;
 
-  if (typed.type === "image" && typed.source?.type === "base64" && typed.source.data) {
-    const mediaType = typed.source.media_type ?? "image/png";
-    return {
-      url: `data:${mediaType};base64,${typed.source.data}`,
-      mediaType,
-      bytes: estimateBase64Bytes(typed.source.data),
-    };
+  const sourceData = stringValue(source?.data);
+  if (typed.type === "image" && sourceData) {
+    const mediaType = stringValue(source?.media_type) ?? stringValue(source?.mediaType) ?? "image/png";
+    return imageFromData(sourceData, mediaType);
   }
 
-  if (typed.type === "image_url" || "image_url" in typed) {
-    if (typeof typed.image_url === "string") {
-      return { url: typed.image_url };
-    }
-
-    if (isRecord(typed.image_url) && typeof typed.image_url.url === "string") {
-      return { url: typed.image_url.url };
-    }
+  const topLevelData = stringValue(typed.data);
+  if ((typed.type === "image" || typed.type === "input_image") && topLevelData) {
+    const mediaType = typed.media_type ?? typed.mediaType ?? "image/png";
+    return imageFromData(topLevelData, mediaType);
   }
 
-  if ((typed.type === "input_image" || "url" in typed) && typeof typed.url === "string") {
-    return { url: typed.url };
+  const imageUrl = urlFromImageUrlValue(typed.image_url);
+  if ((typed.type === "image_url" || typed.type === "input_image" || "image_url" in typed) && imageUrl) {
+    return { url: imageUrl };
+  }
+
+  const sourceImageUrl = urlFromImageUrlValue(source?.image_url);
+  if (sourceImageUrl) {
+    return { url: sourceImageUrl };
+  }
+
+  const sourceUrl = stringValue(source?.url) ?? stringValue(source?.uri);
+  if (sourceUrl) {
+    return { url: sourceUrl };
+  }
+
+  const topLevelUrl = stringValue(typed.url);
+  if ((typed.type === "input_image" || typed.type === "image" || "url" in typed) && topLevelUrl) {
+    return { url: topLevelUrl };
   }
 
   return null;
+}
+
+function isImageLikePart(part: ChatMessagePart): boolean {
+  if (!isRecord(part)) {
+    return false;
+  }
+
+  const type = typeof part.type === "string" ? part.type.toLowerCase() : "";
+  return (
+    type.includes("image") ||
+    "image_url" in part ||
+    "source" in part ||
+    "url" in part ||
+    "data" in part
+  );
+}
+
+function partType(part: ChatMessagePart): string {
+  if (isRecord(part) && typeof part.type === "string") {
+    return part.type;
+  }
+
+  return typeof part;
+}
+
+function partKeys(part: ChatMessagePart): string[] {
+  return isRecord(part) ? Object.keys(part).sort() : [];
 }
 
 function extractMarkdownImages(content: string): ExtractedImage[] {
@@ -131,6 +208,33 @@ function extractImages(request: ChatCompletionRequest): ImageExtraction {
   }
 
   return { images, textHints };
+}
+
+export function getVisionInputDiagnostics(request: ChatCompletionRequest): VisionInputDiagnostics {
+  const extraction = extractImages(request);
+  const imageLikeParts: Array<ChatMessagePart | "markdown-image"> = [];
+
+  for (const message of request.messages ?? []) {
+    if (typeof message.content === "string") {
+      if (extractMarkdownImages(message.content).length > 0) {
+        imageLikeParts.push("markdown-image");
+      }
+      continue;
+    }
+
+    imageLikeParts.push(...message.content.filter(isImageLikePart));
+  }
+
+  return {
+    supportedImageCount: extraction.images.length,
+    imageLikePartCount: imageLikeParts.length,
+    imageLikePartTypes: [...new Set(imageLikeParts.map((part) => (typeof part === "string" ? part : partType(part))))],
+    imageLikePartKeys: [
+      ...new Set(
+        imageLikeParts.flatMap((part) => (typeof part === "string" ? ["markdown"] : partKeys(part))),
+      ),
+    ],
+  };
 }
 
 function limitImages(images: ExtractedImage[], visionConfig: VisionConfig): ExtractedImage[] {

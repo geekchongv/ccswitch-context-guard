@@ -116,11 +116,18 @@ export interface ChatMessagePartText {
 
 export interface ChatMessagePartImage {
   type: "image_url" | "input_image" | "image";
-  image_url?: string | { url: string };
+  image_url?: string | { url?: string };
   url?: string;
+  data?: string;
+  media_type?: string;
+  mediaType?: string;
   source?: {
     type?: string;
+    url?: string;
+    uri?: string;
+    image_url?: string | { url?: string };
     media_type?: string;
+    mediaType?: string;
     data?: string;
   };
 }

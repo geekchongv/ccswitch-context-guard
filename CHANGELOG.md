@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.4.98
+
+- Fixed Claude Desktop vision routing for image blocks that provide `source.url`, `source.uri`, or `input_image.image_url` instead of only Anthropic base64 `source.data`.
+- Added safe vision input diagnostics when a request contains image-like blocks that still do not match a supported format, without logging image payloads, URLs, or secret file identifiers.
+- Added regression tests for Claude Desktop URL-backed images, OpenAI-style `input_image` blocks, and unsupported image-like diagnostic logging.
+
 ## v0.4.97
 
 - Added macOS Intel and Apple Silicon release builds in DMG and ZIP formats, with macOS-native writable configuration paths.

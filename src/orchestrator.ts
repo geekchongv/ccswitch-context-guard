@@ -4,7 +4,7 @@ import { Logger } from "./logger.js";
 import { SessionStore } from "./session-store.js";
 import { assessBudget, estimateRequestTokens } from "./token-estimator.js";
 import { compactRequest } from "./compactor.js";
-import { enrichRequestWithVision, hasImageInput } from "./modality-router.js";
+import { enrichRequestWithVision, getVisionInputDiagnostics } from "./modality-router.js";
 import { buildChunkPlan, buildSynthesisRequest } from "./chunking.js";
 import { UpstreamClient } from "./upstream-client.js";
 import { appendCompactWarning } from "./response-warning.js";
@@ -367,13 +367,17 @@ export class Orchestrator {
         imageCount: withVision.vision.imageCount,
         summaryPreview: withVision.vision.summary?.slice(0, 160) ?? "",
       });
-    } else if (this.config.vision.enabled && hasImageInput(request)) {
+    } else if (this.config.vision.enabled) {
+      const visionDiagnostics = getVisionInputDiagnostics(request);
       // 视觉已启用、请求里疑似带图，却没能识别出可处理的图片 —— 通常是上游格式未覆盖。
-      this.logger.warn("请求疑似包含图片但视觉预处理未命中，原始图片将直通下游", {
-        requestId,
-        routePath,
-        visionUsed: false,
-      });
+      if (visionDiagnostics.imageLikePartCount > 0) {
+        this.logger.warn("请求疑似包含图片但视觉预处理未命中，原始图片将直通下游", {
+          requestId,
+          routePath,
+          visionUsed: false,
+          ...visionDiagnostics,
+        });
+      }
     }
 
     const proactiveAdjustment = this.reduceMaxTokensIfNeeded(workingRequest, budget, "proactive_budget");
