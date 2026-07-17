@@ -39,6 +39,17 @@ type OpenAiVisionContentPart =
       };
     };
 
+const MEDIA_PART_TYPES = new Set([
+  "attachment",
+  "container_upload",
+  "document",
+  "file",
+  "image",
+  "image_url",
+  "input_image",
+  "screenshot",
+]);
+
 function estimateBase64Bytes(data: string): number {
   const padding = data.endsWith("==") ? 2 : data.endsWith("=") ? 1 : 0;
   return Math.max(0, Math.floor((data.length * 3) / 4) - padding);
@@ -216,6 +227,25 @@ function isImageLikeValue(value: unknown): boolean {
   );
 }
 
+function isMediaLikeValue(value: unknown): boolean {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  const type = typeof value.type === "string" ? value.type.toLowerCase() : "";
+  const source = isRecord(value.source) ? value.source : undefined;
+  return (
+    MEDIA_PART_TYPES.has(type) ||
+    type.includes("image") ||
+    isImageMediaType(mediaTypeFromRecord(value)) ||
+    isImageMediaType(source ? mediaTypeFromRecord(source) : undefined) ||
+    "image_url" in value ||
+    "file_id" in value ||
+    "fileId" in value ||
+    imageFromUnknown(value) !== null
+  );
+}
+
 function partType(part: ChatMessagePart): string {
   if (isRecord(part) && typeof part.type === "string") {
     return part.type;
@@ -382,7 +412,7 @@ function stripImageParts(request: ChatCompletionRequest): ChatCompletionRequest 
     }
 
     const content = message.content
-      .filter((part) => !imageFromPart(part))
+      .filter((part) => !imageFromPart(part) && !isMediaLikeValue(part))
       .map((part) => part as ChatMessagePartText | Record<string, JsonValue>);
 
     return {
@@ -402,7 +432,7 @@ function stripImagePayloads(value: unknown): unknown {
     return value;
   }
 
-  if (imageFromUnknown(value) || isImageLikeValue(value)) {
+  if (imageFromUnknown(value) || isImageLikeValue(value) || isMediaLikeValue(value)) {
     return undefined;
   }
 
@@ -419,6 +449,13 @@ function stripImagePayloads(value: unknown): unknown {
       next[key] = child;
       continue;
     }
+    if (key === "tools" || key === "tool_choice") {
+      next[key] = child;
+      continue;
+    }
+    if (["attachment", "attachments", "file", "files", "image", "images", "uploads"].includes(key)) {
+      continue;
+    }
 
     const stripped = stripImagePayloads(child);
     if (stripped !== undefined) {
@@ -427,6 +464,10 @@ function stripImagePayloads(value: unknown): unknown {
   }
 
   return Object.keys(next).length > 0 ? next : undefined;
+}
+
+export function forceTextOnlyRequest(request: ChatCompletionRequest): ChatCompletionRequest {
+  return stripImageParts(request);
 }
 
 function resolveVisionEndpoint(visionConfig: VisionConfig): string {

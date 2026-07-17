@@ -4,7 +4,7 @@ import { Logger } from "./logger.js";
 import { SessionStore } from "./session-store.js";
 import { assessBudget, estimateRequestTokens } from "./token-estimator.js";
 import { compactRequest } from "./compactor.js";
-import { enrichRequestWithVision, getVisionInputDiagnostics } from "./modality-router.js";
+import { enrichRequestWithVision, forceTextOnlyRequest, getVisionInputDiagnostics } from "./modality-router.js";
 import { buildChunkPlan, buildSynthesisRequest } from "./chunking.js";
 import { UpstreamClient } from "./upstream-client.js";
 import { appendCompactWarning } from "./response-warning.js";
@@ -134,6 +134,10 @@ function parseContextLimitError(status: number, bodyText: string): ContextLimitE
     requestedOutputTokens: requestedOutput ? Number(requestedOutput) : undefined,
     message: bodyText,
   };
+}
+
+function isNonMultimodalModelError(status: number, bodyText: string): boolean {
+  return status === 400 && /not\s+a\s+multimodal\s+model|does\s+not\s+support\s+(?:image|vision|multimodal)/i.test(bodyText);
 }
 
 async function inspectContextLimitResponse(response: Response): Promise<{
@@ -761,6 +765,38 @@ export class Orchestrator {
           });
           response = await this.upstreamClient.postJson(routePath, workingRequest, upstreamHeaders);
         }
+      }
+    }
+
+    if (!response.ok) {
+      const { replayResponse, bodyPreview } = await captureUpstreamError(response);
+      if (isNonMultimodalModelError(replayResponse.status, bodyPreview)) {
+        const textOnlyRequest = forceTextOnlyRequest(workingRequest);
+        const beforeSerialized = JSON.stringify(workingRequest);
+        const afterSerialized = JSON.stringify(textOnlyRequest);
+        if (afterSerialized !== beforeSerialized) {
+          workingRequest = textOnlyRequest;
+          this.logger.warn("上游拒绝多模态请求，已剥离图片/附件字段并自动重试一次", {
+            requestId,
+            routePath,
+            status: replayResponse.status,
+            visionUsed: withVision.vision.used,
+            beforeBytes: Buffer.byteLength(beforeSerialized, "utf8"),
+            afterBytes: Buffer.byteLength(afterSerialized, "utf8"),
+          });
+          response = await this.upstreamClient.postJson(routePath, workingRequest, upstreamHeaders);
+        } else {
+          response = replayResponse;
+          this.logger.warn("上游拒绝多模态请求，但代理未发现可剥离的图片/附件字段", {
+            requestId,
+            routePath,
+            status: replayResponse.status,
+            visionUsed: withVision.vision.used,
+            diagnostics: getVisionInputDiagnostics(workingRequest),
+          });
+        }
+      } else {
+        response = replayResponse;
       }
     }
 

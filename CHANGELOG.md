@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.4.100
+
+- Added a recovery retry when GLM/text-only downstreams reject Claude Desktop payloads with `not a multimodal model`: the proxy now strips media/file/upload blocks and retries once instead of immediately surfacing the 400.
+- Expanded Desktop media stripping to cover `container_upload`, `file`, `document`, `attachment`, `screenshot`, and related file-id/image fields while preserving Agent tool definitions.
+- Added regression tests for Desktop `container_upload` payloads and the full orchestrator retry path after a GLM-5 multimodal rejection.
+
 ## v0.4.99
 
 - Fixed Claude Desktop image requests that carry screenshots in top-level attachment/file/image fields instead of `messages[].content[]`.

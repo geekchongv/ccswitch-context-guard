@@ -367,6 +367,74 @@ test("orchestrator preserves oversized Agent tool protocol instead of generic ch
   }
 });
 
+test("orchestrator retries as text-only after upstream rejects multimodal payload", async () => {
+  mkdirSync("test-output/logs", { recursive: true });
+  mkdirSync("test-output/runtime/sessions", { recursive: true });
+  const received: ChatCompletionRequest[] = [];
+  const upstream = http.createServer(async (request, response) => {
+    const body = (await readJson(request)) as ChatCompletionRequest;
+    received.push(body);
+
+    if (received.length === 1) {
+      response.writeHead(400, { "content-type": "application/json; charset=utf-8" });
+      response.end(JSON.stringify({
+        error: {
+          message: "GLM-5 is not a multimodal model",
+          code: 400,
+        },
+      }));
+      return;
+    }
+
+    response.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+    response.end(JSON.stringify({ content: [{ type: "text", text: "text-only retry ok" }] }));
+  });
+  upstream.listen(0, "127.0.0.1");
+  await once(upstream, "listening");
+  const address = upstream.address();
+  assert.ok(address && typeof address === "object");
+
+  try {
+    const config = buildTestConfig(address.port);
+    const orchestrator = new Orchestrator(
+      config,
+      new Logger(config.logging),
+      new SessionStore(config.runtime.directory),
+    );
+    const request: ChatCompletionRequest = {
+      tools: [{ name: "Read", input_schema: { type: "object" } }],
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "能识别吗" },
+            {
+              type: "container_upload",
+              file_id: "file-secret-id",
+              media_type: "image/png",
+            } as unknown as Record<string, string>,
+          ],
+        },
+      ],
+      max_tokens: 1024,
+    };
+
+    const response = await orchestrator.handle("/claude-desktop/v1/messages", request);
+    const payload = (await response.json()) as { content: { text: string }[] };
+
+    assert.equal(response.status, 200);
+    assert.equal(payload.content[0]?.text, "text-only retry ok");
+    assert.equal(received.length, 2);
+    assert.match(JSON.stringify(received[0]), /container_upload/);
+    assert.doesNotMatch(JSON.stringify(received[1]), /container_upload/);
+    assert.doesNotMatch(JSON.stringify(received[1]), /file-secret-id/);
+    assert.match(JSON.stringify(received[1]), /"tools"/);
+  } finally {
+    upstream.close();
+    await once(upstream, "close");
+  }
+});
+
 test("orchestrator retries with minimum output when provider count leaves no safety margin", async () => {
   mkdirSync("test-output/logs", { recursive: true });
   mkdirSync("test-output/runtime/sessions", { recursive: true });

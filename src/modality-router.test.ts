@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import http from "node:http";
 import { once } from "node:events";
 import { ChatCompletionRequest, VisionConfig } from "./types.js";
-import { enrichRequestWithVision, getVisionInputDiagnostics, hasImageInput } from "./modality-router.js";
+import { enrichRequestWithVision, forceTextOnlyRequest, getVisionInputDiagnostics, hasImageInput } from "./modality-router.js";
 
 async function readJson(request: http.IncomingMessage): Promise<Record<string, unknown>> {
   const chunks: Buffer[] = [];
@@ -301,4 +301,40 @@ test("enrichRequestWithVision handles top-level Desktop attachments and strips t
     upstream.close();
     await once(upstream, "close");
   }
+});
+
+test("forceTextOnlyRequest strips Desktop container upload media while preserving tools", () => {
+  const request: ChatCompletionRequest = {
+    messages: [
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "能识别吗" },
+          {
+            type: "container_upload",
+            file_id: "file-secret-id",
+            media_type: "image/png",
+          } as unknown as Record<string, string>,
+        ],
+      },
+    ],
+    tools: [{ name: "Read", input_schema: { type: "object" } }],
+    attachments: [
+      {
+        type: "file",
+        file_id: "another-secret-id",
+        media_type: "image/png",
+      },
+    ],
+  };
+
+  const result = forceTextOnlyRequest(request);
+  const serialized = JSON.stringify(result);
+
+  assert.match(serialized, /能识别吗/);
+  assert.match(serialized, /"tools"/);
+  assert.doesNotMatch(serialized, /container_upload/);
+  assert.doesNotMatch(serialized, /file-secret-id/);
+  assert.doesNotMatch(serialized, /another-secret-id/);
+  assert.doesNotMatch(serialized, /attachments/);
 });
