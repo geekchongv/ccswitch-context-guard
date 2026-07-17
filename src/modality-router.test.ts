@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import http from "node:http";
 import { once } from "node:events";
-import { ChatCompletionRequest, VisionConfig } from "./types.js";
+import { ChatCompletionRequest, JsonValue, VisionConfig } from "./types.js";
 import { enrichRequestWithVision, forceTextOnlyRequest, getVisionInputDiagnostics, hasImageInput } from "./modality-router.js";
 
 async function readJson(request: http.IncomingMessage): Promise<Record<string, unknown>> {
@@ -207,6 +207,50 @@ test("enrichRequestWithVision accepts OpenAI input_image image_url objects", asy
   } finally {
     upstream.close();
     await once(upstream, "close");
+  }
+});
+
+test("enrichRequestWithVision finds an image nested inside a Desktop tool result", async () => {
+  const seenImageUrls: string[] = [];
+  const visionServer = http.createServer(async (request, response) => {
+    const body = await readJson(request);
+    const messages = body.messages as Array<{ content?: Array<{ image_url?: { url?: string } }> }>;
+    for (const part of messages.flatMap((message) => message.content ?? [])) {
+      if (part.image_url?.url) seenImageUrls.push(part.image_url.url);
+    }
+    response.writeHead(200, { "content-type": "application/json" });
+    response.end(JSON.stringify({ choices: [{ message: { content: "nested image ok" } }] }));
+  });
+  visionServer.listen(0, "127.0.0.1");
+  await once(visionServer, "listening");
+  const address = visionServer.address();
+  assert.ok(address && typeof address === "object");
+
+  try {
+    const config = buildVisionConfig(address.port);
+    config.models = [config.model];
+    config.compareModels = false;
+    const request: ChatCompletionRequest = {
+      messages: [{
+        role: "user",
+        content: [{
+          type: "tool_result",
+          tool_use_id: "desktop-upload",
+          content: [{
+            type: "image",
+            source: { type: "base64", media_type: "image/png", data: "aGVsbG8=" },
+          }],
+        } as unknown as Record<string, JsonValue>],
+      }],
+    };
+
+    const result = await enrichRequestWithVision(request, config);
+    assert.equal(result.vision.used, true);
+    assert.deepEqual(seenImageUrls, ["data:image/png;base64,aGVsbG8="]);
+    assert.doesNotMatch(JSON.stringify(result.request), /aGVsbG8=/);
+  } finally {
+    visionServer.close();
+    await once(visionServer, "close");
   }
 });
 

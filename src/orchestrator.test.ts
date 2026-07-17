@@ -367,7 +367,7 @@ test("orchestrator preserves oversized Agent tool protocol instead of generic ch
   }
 });
 
-test("orchestrator retries as text-only after upstream rejects multimodal payload", async () => {
+test("orchestrator does not hide a failed image behind a text-only retry", async () => {
   mkdirSync("test-output/logs", { recursive: true });
   mkdirSync("test-output/runtime/sessions", { recursive: true });
   const received: ChatCompletionRequest[] = [];
@@ -375,19 +375,8 @@ test("orchestrator retries as text-only after upstream rejects multimodal payloa
     const body = (await readJson(request)) as ChatCompletionRequest;
     received.push(body);
 
-    if (received.length === 1) {
-      response.writeHead(400, { "content-type": "application/json; charset=utf-8" });
-      response.end(JSON.stringify({
-        error: {
-          message: "GLM-5 is not a multimodal model",
-          code: 400,
-        },
-      }));
-      return;
-    }
-
-    response.writeHead(200, { "content-type": "application/json; charset=utf-8" });
-    response.end(JSON.stringify({ content: [{ type: "text", text: "text-only retry ok" }] }));
+    response.writeHead(400, { "content-type": "application/json; charset=utf-8" });
+    response.end(JSON.stringify({ error: { message: "GLM-5 is not a multimodal model", code: 400 } }));
   });
   upstream.listen(0, "127.0.0.1");
   await once(upstream, "listening");
@@ -422,16 +411,78 @@ test("orchestrator retries as text-only after upstream rejects multimodal payloa
     const response = await orchestrator.handle("/claude-desktop/v1/messages", request);
     const payload = (await response.json()) as { content: { text: string }[] };
 
-    assert.equal(response.status, 200);
-    assert.equal(payload.content[0]?.text, "text-only retry ok");
-    assert.equal(received.length, 2);
+    assert.equal(response.status, 400);
+    assert.match(JSON.stringify(payload), /CCProxy 图片识别失败/);
+    assert.equal(received.length, 1);
     assert.match(JSON.stringify(received[0]), /container_upload/);
-    assert.doesNotMatch(JSON.stringify(received[1]), /container_upload/);
-    assert.doesNotMatch(JSON.stringify(received[1]), /file-secret-id/);
-    assert.match(JSON.stringify(received[1]), /"tools"/);
   } finally {
     upstream.close();
     await once(upstream, "close");
+  }
+});
+
+test("orchestrator downloads a Desktop file reference and sends its vision summary to the text model", async () => {
+  mkdirSync("test-output/logs", { recursive: true });
+  mkdirSync("test-output/runtime/sessions", { recursive: true });
+  const received: ChatCompletionRequest[] = [];
+  const fetchedPaths: string[] = [];
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  const upstream = http.createServer(async (request, response) => {
+    fetchedPaths.push(request.url ?? "");
+    if (request.method === "GET") {
+      response.writeHead(200, { "content-type": "application/octet-stream", "content-length": png.length });
+      response.end(png);
+      return;
+    }
+    received.push((await readJson(request)) as ChatCompletionRequest);
+    response.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+    response.end(JSON.stringify({ content: [{ type: "text", text: "识别完成" }] }));
+  });
+  upstream.listen(0, "127.0.0.1");
+  await once(upstream, "listening");
+  const upstreamAddress = upstream.address();
+  assert.ok(upstreamAddress && typeof upstreamAddress === "object");
+
+  const vision = http.createServer(async (request, response) => {
+    const body = await readJson(request);
+    assert.match(JSON.stringify(body), /data:image\/png;base64/);
+    response.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+    response.end(JSON.stringify({ choices: [{ message: { content: "图片里是一个设置页面" } }] }));
+  });
+  vision.listen(0, "127.0.0.1");
+  await once(vision, "listening");
+  const visionAddress = vision.address();
+  assert.ok(visionAddress && typeof visionAddress === "object");
+
+  try {
+    const config = buildTestConfig(upstreamAddress.port);
+    config.vision.enabled = true;
+    config.vision.baseUrl = `http://127.0.0.1:${visionAddress.port}`;
+    config.vision.chatPath = "/v1/chat/completions";
+    config.vision.model = "vision-test";
+    config.vision.models = ["vision-test"];
+    const orchestrator = new Orchestrator(config, new Logger(config.logging), new SessionStore(config.runtime.directory));
+    const response = await orchestrator.handle("/claude-desktop/v1/messages", {
+      messages: [{
+        role: "user",
+        content: [
+          { type: "text", text: "识别图片" },
+          { type: "container_upload", file_id: "file-image" } as unknown as Record<string, string>,
+        ],
+      }],
+      max_tokens: 1024,
+    }, { authorization: "Bearer desktop-token" });
+
+    assert.equal(response.status, 200);
+    assert.deepEqual(fetchedPaths, ["/claude-desktop/v1/files/file-image/content", "/claude-desktop/v1/messages"]);
+    assert.equal(received.length, 1);
+    const serialized = JSON.stringify(received[0]);
+    assert.match(serialized, /图片里是一个设置页面/);
+    assert.doesNotMatch(serialized, /container_upload|file-image/);
+  } finally {
+    upstream.close();
+    vision.close();
+    await Promise.all([once(upstream, "close"), once(vision, "close")]);
   }
 });
 

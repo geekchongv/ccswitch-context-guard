@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.4.101
+
+- Fixed actual Claude Desktop image recognition for `container_upload` / `file_id` payloads by downloading image bytes through the matching upstream Files API before calling the configured vision model.
+- Removed the misleading text-only fallback that could return a successful "image not visible" answer; failed downloads or vision calls now remain explicit failures.
+- Vision preprocessing now strips the original Desktop attachment only after at least one vision model returns a real summary, with an end-to-end regression test covering file download, vision conversion, and GLM forwarding.
+
 ## v0.4.100
 
 - Added a recovery retry when GLM/text-only downstreams reject Claude Desktop payloads with `not a multimodal model`: the proxy now strips media/file/upload blocks and retries once instead of immediately surfacing the 400.

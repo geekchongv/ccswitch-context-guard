@@ -15,6 +15,8 @@ interface ExtractedImage {
   bytes?: number;
 }
 
+export type VisionFileResolver = (fileId: string) => Promise<ExtractedImage | null>;
+
 interface ImageExtraction {
   images: ExtractedImage[];
   textHints: string[];
@@ -25,6 +27,7 @@ export interface VisionInputDiagnostics {
   imageLikePartCount: number;
   imageLikePartTypes: string[];
   imageLikePartKeys: string[];
+  fileReferenceCount: number;
 }
 
 type OpenAiVisionContentPart =
@@ -343,9 +346,54 @@ function extractImages(request: ChatCompletionRequest): ImageExtraction {
       visit(child, path ? `${path}.${key}` : key);
     }
   };
+  for (const [messageIndex, message] of (request.messages ?? []).entries()) {
+    if (!Array.isArray(message.content)) continue;
+    message.content.forEach((part, partIndex) => visit(part, `messages[${messageIndex}].content[${partIndex}]`));
+  }
   visit(request, "");
 
   return { images, textHints };
+}
+
+function extractFileReferences(request: ChatCompletionRequest): string[] {
+  const fileIds: string[] = [];
+  const seen = new Set<string>();
+
+  const visit = (value: unknown, key = ""): void => {
+    if (!value || typeof value !== "object") {
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.forEach((item) => visit(item, key));
+      return;
+    }
+
+    const record = value as Record<string, unknown>;
+    const fileId = stringValue(record.file_id) ?? stringValue(record.fileId);
+    const type = stringValue(record.type)?.toLowerCase() ?? "";
+    const source = isRecord(record.source) ? record.source : undefined;
+    const sourceType = stringValue(source?.type)?.toLowerCase() ?? "";
+    const mediaReference =
+      MEDIA_PART_TYPES.has(type) ||
+      type.includes("image") ||
+      sourceType === "file" ||
+      isImageMediaType(mediaTypeFromRecord(record)) ||
+      isImageMediaType(source ? mediaTypeFromRecord(source) : undefined);
+    if (fileId && mediaReference && !seen.has(fileId)) {
+      seen.add(fileId);
+      fileIds.push(fileId);
+    }
+
+    for (const [childKey, child] of Object.entries(record)) {
+      if (childKey === "tools" || childKey === "tool_choice") {
+        continue;
+      }
+      visit(child, childKey);
+    }
+  };
+
+  visit(request);
+  return fileIds;
 }
 
 export function getVisionInputDiagnostics(request: ChatCompletionRequest): VisionInputDiagnostics {
@@ -396,6 +444,7 @@ export function getVisionInputDiagnostics(request: ChatCompletionRequest): Visio
         imageLikeParts.flatMap((part) => (typeof part === "string" ? ["markdown"] : partKeys(part))),
       ),
     ],
+    fileReferenceCount: extractFileReferences(request).length,
   };
 }
 
@@ -411,9 +460,15 @@ function stripImageParts(request: ChatCompletionRequest): ChatCompletionRequest 
       return message;
     }
 
-    const content = message.content
-      .filter((part) => !imageFromPart(part) && !isMediaLikeValue(part))
-      .map((part) => part as ChatMessagePartText | Record<string, JsonValue>);
+    const content = message.content.flatMap((part) => {
+      if (imageFromPart(part) || isMediaLikeValue(part)) return [];
+      const stripped = stripImagePayloads(part);
+      if (!isRecord(stripped)) return [];
+      if (stripped.type === "tool_result" && !("content" in stripped)) {
+        stripped.content = "[图片已由代理视觉模型识别，详见 VISION SUMMARY]";
+      }
+      return [stripped as ChatMessagePartText | Record<string, JsonValue>];
+    });
 
     return {
       ...message,
@@ -553,11 +608,16 @@ async function callVisionModel(
     });
 
     if (!response.ok) {
-      return `[${model}] 视觉模型调用失败：HTTP ${response.status}`;
+      const body = await response.text();
+      throw new Error(`${model} HTTP ${response.status}: ${body.slice(0, 300)}`);
     }
 
     const payload = (await response.json()) as Record<string, unknown>;
-    return extractAssistantText(payload) || `[${model}] 未返回可用视觉摘要`;
+    const summary = extractAssistantText(payload).trim();
+    if (!summary) {
+      throw new Error(`${model} 未返回可用视觉摘要`);
+    }
+    return summary;
   } finally {
     clearTimeout(timeout);
   }
@@ -570,6 +630,7 @@ export function hasImageInput(request: ChatCompletionRequest): boolean {
 export async function enrichRequestWithVision(
   request: ChatCompletionRequest,
   visionConfig: VisionConfig,
+  resolveFile?: VisionFileResolver,
 ): Promise<{ request: ChatCompletionRequest; vision: VisionAnalysisResult }> {
   if (!visionConfig.enabled) {
     return {
@@ -579,7 +640,13 @@ export async function enrichRequestWithVision(
   }
 
   const extraction = extractImages(request);
-  const images = limitImages(extraction.images, visionConfig);
+  const resolvedImages: ExtractedImage[] = [];
+  if (resolveFile) {
+    const fileIds = extractFileReferences(request).slice(-visionConfig.maxImagesPerRequest);
+    const resolved = await Promise.all(fileIds.map((fileId) => resolveFile(fileId)));
+    resolvedImages.push(...resolved.filter((image): image is ExtractedImage => image !== null));
+  }
+  const images = limitImages([...extraction.images, ...resolvedImages], visionConfig);
   if (images.length === 0) {
     return {
       request,
@@ -598,12 +665,21 @@ export async function enrichRequestWithVision(
     };
   }
 
-  const modelSummaries = await Promise.all(
-    models.map(async (model) => ({
-      model,
-      summary: await callVisionModel(model, images, extraction.textHints, visionConfig),
-    })),
+  const settledSummaries = await Promise.allSettled(
+    models.map(async (model) => ({ model, summary: await callVisionModel(model, images, extraction.textHints, visionConfig) })),
   );
+  const modelSummaries = settledSummaries
+    .filter((result): result is PromiseFulfilledResult<{ model: string; summary: string }> => result.status === "fulfilled")
+    .map((result) => result.value);
+  if (modelSummaries.length === 0) {
+    const errors = settledSummaries
+      .filter((result): result is PromiseRejectedResult => result.status === "rejected")
+      .map((result) => result.reason instanceof Error ? result.reason.message : String(result.reason));
+    return {
+      request,
+      vision: { used: false, imageCount: images.length, error: errors.join(" | ") || "视觉模型未返回结果" },
+    };
+  }
 
   const summary = modelSummaries
     .map((item) => [`## ${item.model}`, item.summary].join("\n"))

@@ -4,7 +4,7 @@ import { Logger } from "./logger.js";
 import { SessionStore } from "./session-store.js";
 import { assessBudget, estimateRequestTokens } from "./token-estimator.js";
 import { compactRequest } from "./compactor.js";
-import { enrichRequestWithVision, forceTextOnlyRequest, getVisionInputDiagnostics } from "./modality-router.js";
+import { enrichRequestWithVision, getVisionInputDiagnostics } from "./modality-router.js";
 import { buildChunkPlan, buildSynthesisRequest } from "./chunking.js";
 import { UpstreamClient } from "./upstream-client.js";
 import { appendCompactWarning } from "./response-warning.js";
@@ -138,6 +138,15 @@ function parseContextLimitError(status: number, bodyText: string): ContextLimitE
 
 function isNonMultimodalModelError(status: number, bodyText: string): boolean {
   return status === 400 && /not\s+a\s+multimodal\s+model|does\s+not\s+support\s+(?:image|vision|multimodal)/i.test(bodyText);
+}
+
+function detectImageMediaType(bytes: Uint8Array, contentType: string | null): string | null {
+  if (contentType && /^image\//i.test(contentType)) return contentType.split(";")[0] ?? contentType;
+  if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return "image/png";
+  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "image/jpeg";
+  if (String.fromCharCode(...bytes.slice(0, 6)) === "GIF87a" || String.fromCharCode(...bytes.slice(0, 6)) === "GIF89a") return "image/gif";
+  if (String.fromCharCode(...bytes.slice(0, 4)) === "RIFF" && String.fromCharCode(...bytes.slice(8, 12)) === "WEBP") return "image/webp";
+  return null;
 }
 
 async function inspectContextLimitResponse(response: Response): Promise<{
@@ -309,7 +318,30 @@ export class Orchestrator {
 
     this.logger.info("收到请求", { requestId, routePath });
 
-    const withVision = await enrichRequestWithVision(request, this.config.vision);
+    const withVision = await enrichRequestWithVision(request, this.config.vision, async (fileId) => {
+      const encodedFileId = encodeURIComponent(fileId);
+      const prefixedPath = routePath.replace(/\/v1\/messages$/i, `/v1/files/${encodedFileId}/content`);
+      const candidatePaths = [...new Set([prefixedPath, `/v1/files/${encodedFileId}/content`])];
+      for (const filePath of candidatePaths) {
+        const fileResponse = await this.upstreamClient.forward(filePath, {
+          method: "GET",
+          headers: upstreamHeaders,
+        });
+        if (!fileResponse.ok) continue;
+        const declaredLength = Number(fileResponse.headers.get("content-length") ?? 0);
+        if (declaredLength > this.config.vision.maxImageBytes) continue;
+        const bytes = new Uint8Array(await fileResponse.arrayBuffer());
+        if (bytes.byteLength === 0 || bytes.byteLength > this.config.vision.maxImageBytes) continue;
+        const mediaType = detectImageMediaType(bytes, fileResponse.headers.get("content-type"));
+        if (!mediaType) continue;
+        return {
+          url: `data:${mediaType};base64,${Buffer.from(bytes).toString("base64")}`,
+          mediaType,
+          bytes: bytes.byteLength,
+        };
+      }
+      return null;
+    });
     let workingRequest = withVision.request;
     const agentToolProtocol = hasAgentToolProtocol(workingRequest);
     let compacted = false;
@@ -374,12 +406,13 @@ export class Orchestrator {
     } else if (this.config.vision.enabled) {
       const visionDiagnostics = getVisionInputDiagnostics(request);
       // 视觉已启用、请求里疑似带图，却没能识别出可处理的图片 —— 通常是上游格式未覆盖。
-      if (visionDiagnostics.imageLikePartCount > 0) {
+      if (visionDiagnostics.imageLikePartCount > 0 || visionDiagnostics.fileReferenceCount > 0) {
         this.logger.warn("请求疑似包含图片但视觉预处理未命中，原始图片将直通下游", {
           requestId,
           routePath,
           visionUsed: false,
           ...visionDiagnostics,
+          visionError: withVision.vision.error,
         });
       }
     }
@@ -771,30 +804,27 @@ export class Orchestrator {
     if (!response.ok) {
       const { replayResponse, bodyPreview } = await captureUpstreamError(response);
       if (isNonMultimodalModelError(replayResponse.status, bodyPreview)) {
-        const textOnlyRequest = forceTextOnlyRequest(workingRequest);
-        const beforeSerialized = JSON.stringify(workingRequest);
-        const afterSerialized = JSON.stringify(textOnlyRequest);
-        if (afterSerialized !== beforeSerialized) {
-          workingRequest = textOnlyRequest;
-          this.logger.warn("上游拒绝多模态请求，已剥离图片/附件字段并自动重试一次", {
-            requestId,
-            routePath,
-            status: replayResponse.status,
-            visionUsed: withVision.vision.used,
-            beforeBytes: Buffer.byteLength(beforeSerialized, "utf8"),
-            afterBytes: Buffer.byteLength(afterSerialized, "utf8"),
-          });
-          response = await this.upstreamClient.postJson(routePath, workingRequest, upstreamHeaders);
-        } else {
-          response = replayResponse;
-          this.logger.warn("上游拒绝多模态请求，但代理未发现可剥离的图片/附件字段", {
-            requestId,
-            routePath,
-            status: replayResponse.status,
-            visionUsed: withVision.vision.used,
-            diagnostics: getVisionInputDiagnostics(workingRequest),
-          });
-        }
+        const failureMessage = withVision.vision.error
+          ? `CCProxy 图片识别失败：${withVision.vision.error}`
+          : "CCProxy 图片识别失败：无法从 Claude Desktop 的附件引用中读取图片，请查看代理日志。";
+        response = new Response(JSON.stringify({
+          type: "error",
+          error: {
+            type: "vision_preprocessing_error",
+            message: failureMessage,
+          },
+        }), {
+          status: 400,
+          headers: { "content-type": "application/json; charset=utf-8" },
+        });
+        this.logger.error("图片未完成视觉识别，已阻止纯文本模型生成误导答案", {
+          requestId,
+          routePath,
+          status: replayResponse.status,
+          visionUsed: withVision.vision.used,
+          visionError: withVision.vision.error,
+          diagnostics: getVisionInputDiagnostics(workingRequest),
+        });
       } else {
         response = replayResponse;
       }
