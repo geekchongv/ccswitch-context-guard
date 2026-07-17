@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.4.99
+
+- Fixed Claude Desktop image requests that carry screenshots in top-level attachment/file/image fields instead of `messages[].content[]`.
+- Strip original image attachment payloads after injecting `[VISION SUMMARY]` so text-only downstream models such as GLM-5 no longer receive raw multimodal fields.
+- Added a regression test for Agent tool sessions with top-level Desktop image attachments.
+
 ## v0.4.98
 
 - Fixed Claude Desktop vision routing for image blocks that provide `source.url`, `source.uri`, or `input_image.image_url` instead of only Anthropic base64 `source.data`.

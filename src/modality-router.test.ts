@@ -238,3 +238,67 @@ test("getVisionInputDiagnostics reports unsupported image-like parts without lea
   assert.deepEqual(diagnostics.imageLikePartKeys, ["source", "type"]);
   assert.doesNotMatch(JSON.stringify(diagnostics), /file-secret-id/);
 });
+
+test("enrichRequestWithVision handles top-level Desktop attachments and strips them for text downstreams", async () => {
+  const seenImageUrls: string[] = [];
+  const upstream = http.createServer(async (request, response) => {
+    const body = await readJson(request);
+    const messages = body.messages as Array<{ content?: Array<{ image_url?: { url?: string } }> }>;
+    const imagePart = messages
+      .flatMap((message) => message.content ?? [])
+      .find((part) => part.image_url);
+    if (imagePart?.image_url?.url) {
+      seenImageUrls.push(imagePart.image_url.url);
+    }
+
+    response.writeHead(200, { "content-type": "application/json; charset=utf-8" });
+    response.end(JSON.stringify({ choices: [{ message: { content: "attachment image ok" } }] }));
+  });
+
+  upstream.listen(0, "127.0.0.1");
+  await once(upstream, "listening");
+  const address = upstream.address();
+  assert.ok(address && typeof address === "object");
+
+  try {
+    const config = {
+      ...buildVisionConfig(address.port),
+      models: ["qwen3-vl-30b-a3b-instruct"],
+      compareModels: false,
+    };
+    const request: ChatCompletionRequest = {
+      messages: [
+        {
+          role: "user",
+          content: "请看附件图并回答。",
+        },
+      ],
+      tools: [{ name: "Read" }],
+      attachments: [
+        {
+          type: "image",
+          source: {
+            type: "url",
+            url: "http://127.0.0.1:15722/claude-desktop/attachment/screenshot.png",
+          },
+        },
+      ],
+    };
+
+    assert.equal(hasImageInput(request), true);
+    const diagnostics = getVisionInputDiagnostics(request);
+    assert.equal(diagnostics.supportedImageCount, 1);
+    assert.equal(diagnostics.imageLikePartCount, 1);
+
+    const result = await enrichRequestWithVision(request, config);
+
+    assert.equal(result.vision.used, true);
+    assert.deepEqual(seenImageUrls, ["http://127.0.0.1:15722/claude-desktop/attachment/screenshot.png"]);
+    assert.match(JSON.stringify(result.request.messages), /VISION SUMMARY/);
+    assert.doesNotMatch(JSON.stringify(result.request), /attachments/);
+    assert.match(JSON.stringify(result.request), /"tools"/);
+  } finally {
+    upstream.close();
+    await once(upstream, "close");
+  }
+});

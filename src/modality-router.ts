@@ -64,6 +64,20 @@ function urlFromImageUrlValue(value: unknown): string | undefined {
   return undefined;
 }
 
+function mediaTypeFromRecord(record: Record<string, unknown>): string | undefined {
+  return (
+    stringValue(record.media_type) ??
+    stringValue(record.mediaType) ??
+    stringValue(record.mime_type) ??
+    stringValue(record.mimeType) ??
+    stringValue(record.type)
+  );
+}
+
+function isImageMediaType(value: string | undefined): boolean {
+  return Boolean(value && /^image(\/|$)/i.test(value));
+}
+
 function imageFromData(data: string, mediaType = "image/png"): ExtractedImage {
   if (/^data:image\/[a-z0-9.+-]+;base64,/i.test(data)) {
     const [, parsedMediaType, parsedData] = data.match(/^data:([^;]+);base64,(.+)$/i) ?? [];
@@ -128,6 +142,49 @@ function imageFromPart(part: ChatMessagePart): ExtractedImage | null {
   return null;
 }
 
+function imageFromUnknown(value: unknown): ExtractedImage | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const partImage = imageFromPart(value as ChatMessagePart);
+  if (partImage) {
+    return partImage;
+  }
+
+  const type = typeof value.type === "string" ? value.type.toLowerCase() : "";
+  const mediaType = mediaTypeFromRecord(value);
+  const source = isRecord(value.source) ? value.source : undefined;
+  const sourceMediaType = source ? mediaTypeFromRecord(source) : undefined;
+  const imageLike =
+    type.includes("image") ||
+    isImageMediaType(mediaType) ||
+    isImageMediaType(sourceMediaType) ||
+    "image_url" in value;
+
+  if (!imageLike) {
+    return null;
+  }
+
+  const data = stringValue(value.data) ?? stringValue(source?.data);
+  if (data) {
+    return imageFromData(data, mediaType ?? sourceMediaType ?? "image/png");
+  }
+
+  const url =
+    urlFromImageUrlValue(value.image_url) ??
+    stringValue(value.url) ??
+    stringValue(value.uri) ??
+    urlFromImageUrlValue(source?.image_url) ??
+    stringValue(source?.url) ??
+    stringValue(source?.uri);
+  if (url) {
+    return { url };
+  }
+
+  return null;
+}
+
 function isImageLikePart(part: ChatMessagePart): boolean {
   if (!isRecord(part)) {
     return false;
@@ -140,6 +197,22 @@ function isImageLikePart(part: ChatMessagePart): boolean {
     "source" in part ||
     "url" in part ||
     "data" in part
+  );
+}
+
+function isImageLikeValue(value: unknown): boolean {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  const type = typeof value.type === "string" ? value.type.toLowerCase() : "";
+  const source = isRecord(value.source) ? value.source : undefined;
+  return (
+    type.includes("image") ||
+    isImageMediaType(mediaTypeFromRecord(value)) ||
+    isImageMediaType(source ? mediaTypeFromRecord(source) : undefined) ||
+    "image_url" in value ||
+    imageFromUnknown(value) !== null
   );
 }
 
@@ -185,10 +258,20 @@ function extractMarkdownImages(content: string): ExtractedImage[] {
 function extractImages(request: ChatCompletionRequest): ImageExtraction {
   const images: ExtractedImage[] = [];
   const textHints: string[] = [];
+  const seenImageUrls = new Set<string>();
+  const pushImage = (image: ExtractedImage): void => {
+    if (seenImageUrls.has(image.url)) {
+      return;
+    }
+    seenImageUrls.add(image.url);
+    images.push(image);
+  };
 
   for (const message of request.messages ?? []) {
     if (typeof message.content === "string") {
-      images.push(...extractMarkdownImages(message.content));
+      for (const image of extractMarkdownImages(message.content)) {
+        pushImage(image);
+      }
       textHints.push(message.content);
       continue;
     }
@@ -196,7 +279,7 @@ function extractImages(request: ChatCompletionRequest): ImageExtraction {
     for (const part of message.content) {
       const image = imageFromPart(part);
       if (image) {
-        images.push(image);
+        pushImage(image);
         continue;
       }
 
@@ -206,6 +289,31 @@ function extractImages(request: ChatCompletionRequest): ImageExtraction {
       }
     }
   }
+
+  const visit = (value: unknown, path: string): void => {
+    if (!value || typeof value !== "object") {
+      return;
+    }
+
+    const image = imageFromUnknown(value);
+    if (image) {
+      pushImage(image);
+      return;
+    }
+
+    if (Array.isArray(value)) {
+      value.forEach((item, index) => visit(item, `${path}[${index}]`));
+      return;
+    }
+
+    for (const [key, child] of Object.entries(value)) {
+      if (key === "messages" || key === "tools" || key === "tool_choice") {
+        continue;
+      }
+      visit(child, path ? `${path}.${key}` : key);
+    }
+  };
+  visit(request, "");
 
   return { images, textHints };
 }
@@ -224,6 +332,30 @@ export function getVisionInputDiagnostics(request: ChatCompletionRequest): Visio
 
     imageLikeParts.push(...message.content.filter(isImageLikePart));
   }
+
+  const visit = (value: unknown): void => {
+    if (!value || typeof value !== "object") {
+      return;
+    }
+
+    if (isImageLikeValue(value)) {
+      imageLikeParts.push(value as ChatMessagePart);
+      return;
+    }
+
+    if (Array.isArray(value)) {
+      value.forEach(visit);
+      return;
+    }
+
+    for (const [key, child] of Object.entries(value)) {
+      if (key === "messages" || key === "tools" || key === "tool_choice") {
+        continue;
+      }
+      visit(child);
+    }
+  };
+  visit(request);
 
   return {
     supportedImageCount: extraction.images.length,
@@ -260,9 +392,41 @@ function stripImageParts(request: ChatCompletionRequest): ChatCompletionRequest 
   });
 
   return {
-    ...request,
+    ...(stripImagePayloads(request) as ChatCompletionRequest),
     messages,
   };
+}
+
+function stripImagePayloads(value: unknown): unknown {
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+
+  if (imageFromUnknown(value) || isImageLikeValue(value)) {
+    return undefined;
+  }
+
+  if (Array.isArray(value)) {
+    const stripped = value
+      .map((item) => stripImagePayloads(item))
+      .filter((item) => item !== undefined);
+    return stripped.length > 0 ? stripped : undefined;
+  }
+
+  const next: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(value)) {
+    if (key === "messages") {
+      next[key] = child;
+      continue;
+    }
+
+    const stripped = stripImagePayloads(child);
+    if (stripped !== undefined) {
+      next[key] = stripped;
+    }
+  }
+
+  return Object.keys(next).length > 0 ? next : undefined;
 }
 
 function resolveVisionEndpoint(visionConfig: VisionConfig): string {
