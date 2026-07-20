@@ -279,7 +279,7 @@ export class Orchestrator {
       return { response: inspected.replayResponse, retried: false };
     }
 
-    let retryRequest = compactRequest(request);
+    let retryRequest = compactRequest(request, undefined, this.logger);
     const retryBudget = assessBudget(
       retryRequest,
       this.config.tokenPolicy.compactThreshold,
@@ -444,7 +444,7 @@ export class Orchestrator {
     if (budget.decision === "compact_required") {
       if (this.config.tokenPolicy.compactMode === "proxy") {
         const beforeCompactTokens = budget.estimate.totalTokens;
-        workingRequest = compactRequest(workingRequest);
+        workingRequest = compactRequest(workingRequest, undefined, this.logger);
         compacted = true;
         budget = assessBudget(
           workingRequest,
@@ -652,7 +652,7 @@ export class Orchestrator {
           this.config.tokenPolicy.responseReserve,
         ).inputTokens;
         if (!agentToolProtocol) {
-          const compactRetryRequest = compactRequest(workingRequest);
+          const compactRetryRequest = compactRequest(workingRequest, undefined, this.logger);
           const afterContextErrorCompactTokens = estimateRequestTokens(
             compactRetryRequest,
             this.config.tokenPolicy.responseReserve,

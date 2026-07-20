@@ -1,6 +1,7 @@
 import { sliceByTokens } from "tokenx";
 import { ChatMessage, ChatMessagePart, ChatCompletionRequest } from "./types.js";
 import { countMessageTokens, countTextTokens } from "./token-counter.js";
+import { Logger } from "./logger.js";
 
 const DEFAULT_COMPACT_TARGET_INPUT_TOKENS = 60_000;
 const COMPACT_MEMORY_TOKENS = 6_000;
@@ -88,15 +89,26 @@ function buildStructuredCompactBlock(messages: ChatMessage[]): string {
 export function compactRequest(
   request: ChatCompletionRequest,
   targetInputTokens = DEFAULT_COMPACT_TARGET_INPUT_TOKENS,
+  logger?: Logger,
 ): ChatCompletionRequest {
   const messages = request.messages ?? [];
-  if (messages.length <= 6 && estimateMessagesTokens(messages) <= targetInputTokens) {
+  const beforeMessages = messages.length;
+  const beforeTokens = estimateMessagesTokens(messages);
+  const requestId = (request as { requestId?: string }).requestId ?? "unknown";
+
+  if (beforeMessages <= 6 && beforeTokens <= targetInputTokens) {
+    logger?.debug("compactRequest: skipped (below threshold)", {
+      requestId,
+      beforeMessages,
+      beforeTokens,
+      targetInputTokens,
+    });
     return request;
   }
 
   const compactBlock = truncateByTokens(buildStructuredCompactBlock(messages), COMPACT_MEMORY_TOKENS);
 
-  if (messages.length <= 6) {
+  if (beforeMessages <= 6) {
     const systemHead = messages.find((message) => message.role === "system");
     const latestUser = [...messages].reverse().find((message) => message.role === "user") ?? messages.at(-1);
     const compactedMessages: ChatMessage[] = [
@@ -108,24 +120,46 @@ export function compactRequest(
       ...(latestUser ? [compactMessage(latestUser, SHORT_LATEST_MESSAGE_TOKENS)] : []),
     ];
 
-    return {
-      ...request,
-      messages: compactedMessages,
-    };
+    const result = { ...request, messages: compactedMessages };
+    logger?.warn("compactRequest: compacted (short path)", {
+      requestId,
+      path: "short",
+      beforeMessages,
+      afterMessages: compactedMessages.length,
+      beforeTokens,
+      afterTokens: estimateMessagesTokens(compactedMessages),
+      compactBlockTokens: countTextTokens(compactBlock),
+      targetInputTokens,
+    });
+    return result;
   }
 
   const preservedHead = messages.slice(0, 2).map((message) => compactMessage(message, PRESERVED_HEAD_TOKENS));
   const recentTail = messages.slice(-4).map((message) => compactMessage(message, RECENT_TAIL_TOKENS));
+  const compactedMessages = [
+    ...preservedHead,
+    {
+      role: "system",
+      content: compactBlock,
+    },
+    ...recentTail,
+  ];
 
-  return {
+  const result = {
     ...request,
-    messages: [
-      ...preservedHead,
-      {
-        role: "system",
-        content: compactBlock,
-      },
-      ...recentTail,
-    ],
+    messages: compactedMessages,
   };
+  logger?.warn("compactRequest: compacted (long path)", {
+    requestId,
+    path: "long",
+    beforeMessages,
+    afterMessages: compactedMessages.length,
+    beforeTokens,
+    afterTokens: estimateMessagesTokens(compactedMessages),
+    compactBlockTokens: countTextTokens(compactBlock),
+    preservedHeadTokens: estimateMessagesTokens(preservedHead),
+    recentTailTokens: estimateMessagesTokens(recentTail),
+    targetInputTokens,
+  });
+  return result;
 }
