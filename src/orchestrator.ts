@@ -442,14 +442,7 @@ export class Orchestrator {
     }
 
     if (budget.decision === "compact_required") {
-      if (agentToolProtocol) {
-        this.logger.warn("Agent tool session deferred to Claude native compact", {
-          requestId,
-          routePath,
-          totalTokens: budget.estimate.totalTokens,
-          compactThreshold: this.config.tokenPolicy.compactThreshold,
-        });
-      } else if (this.config.tokenPolicy.compactMode === "proxy") {
+      if (this.config.tokenPolicy.compactMode === "proxy") {
         const beforeCompactTokens = budget.estimate.totalTokens;
         workingRequest = compactRequest(workingRequest);
         compacted = true;
@@ -466,6 +459,7 @@ export class Orchestrator {
           beforeCompactTokens,
           afterCompactTokens: budget.estimate.totalTokens,
           postCompactDecision: budget.decision,
+          agentToolProtocol,
         });
       } else {
         compactWarning = true;
