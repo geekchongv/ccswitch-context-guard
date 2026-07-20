@@ -62,7 +62,7 @@
     "electron-builder": "^26.15.3",
     "pkg": "^5.8.1",
     "tsx": "^4.23.0",
-    "typescript": "^6.0.3"
+    "typescript": "^7.0.2"
   },
   "build": {
     "appId": "local.ccproxy.agent",
