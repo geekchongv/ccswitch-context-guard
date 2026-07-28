@@ -10,7 +10,7 @@ A transparent safety proxy that sits between Claude Code / Claude Desktop and [C
 
 <p align="center">
   <img alt="CI" src="https://img.shields.io/github/actions/workflow/status/geekchongv/ccswitch-context-guard/ci.yml?branch=main&label=CI&style=flat-square">
-  <img alt="version" src="https://img.shields.io/badge/version-v0.4.93-2ea44f?style=flat-square">
+  <img alt="version" src="https://img.shields.io/badge/version-v0.4.104-2ea44f?style=flat-square">
   <img alt="release" src="https://img.shields.io/github/v/release/geekchongv/ccswitch-context-guard?style=flat-square&color=blue">
   <img alt="platform" src="https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-blue?style=flat-square">
   <img alt="language" src="https://img.shields.io/badge/lang-TypeScript-3178c6?style=flat-square">
@@ -90,6 +90,7 @@ The proxy intercepts `/v1/messages` and `/v1/chat/completions`, applies guardrai
 | 🔌 | **Port fallback** | Auto-jumps to the next free port (`15722 → 15723 → …`) if busy |
 | 🔍 | **Upstream auto-discovery** | Finds a reachable local ccswitch when the configured upstream is down |
 | 📊 | **Built-in dashboard** | Optional status, routing, process info & live logs at the active proxy URL |
+| 🗂️ | **Per-session context center** | Keeps concurrent Claude sessions separate with stable selection, live 200k usage, thresholds, and protection history |
 | 🪵 | **Local Chinese logs** | Human-readable `Token预算评估` / `已自动降低max_tokens` style messages |
 | 📦 | **Windows + macOS packaging** | Ship a portable Windows EXE plus macOS DMG/ZIP builds |
 
@@ -97,7 +98,7 @@ The proxy intercepts `/v1/messages` and `/v1/chat/completions`, applies guardrai
 
 ### Windows portable app
 
-1. Download `CCProxy-Agent-v0.4.97.exe` from the [latest GitHub Release](https://github.com/geekchongv/ccswitch-context-guard/releases/latest).
+1. Download `CCProxy-Agent-v0.4.104.exe` from the [latest GitHub Release](https://github.com/geekchongv/ccswitch-context-guard/releases/latest).
 2. Run the EXE. On first startup it creates a secret-free `config.json` beside the executable.
 3. Configure CC Switch and optional Vision settings in the desktop UI.
 
@@ -191,7 +192,7 @@ Copy `config.example.json` → `config.json`. Key sections:
 }
 ```
 
-With the bundled 200k context window, reserving 30k configures new Claude Code CLI processes to compact at about 85%. The GUI shows the latest request usage as both tokens and percentage, together with the 140k tool-result cleanup, 160k proxy compact, 170k Claude native compact, and 192k effective hard-protection markers. The legacy CCProxy-managed 130k/76% pair is upgraded automatically; other user-defined values remain untouched. The hook observer records only session prefixes, tool-call fingerprints, output sizes, repeated-call counts, and truncation flags; it does not persist source or tool output content.
+With the bundled 200k context window, reserving 30k configures new Claude Code CLI processes to compact at about 85%. The GUI keeps concurrent Claude sessions separate and shows each session's token percentage together with the 140k tool-result cleanup, 160k proxy compact, 170k Claude native compact, and 192k effective hard-protection markers. The legacy CCProxy-managed 130k/76% pair is upgraded automatically; other user-defined values remain untouched. Session and prompt identifiers are stored only as short irreversible hashes; prompt and tool output content is not persisted.
 
 Agent requests containing `tools`, `tool_use`, or `tool_result` are never sent through generic proxy chunking or text-flattening compaction. When an Agent request reaches the configured threshold, CCProxy Agent keeps every `tool_use`, `tool_use_id`, message role, and message position while replacing only older `tool_result.content` values with explicit placeholders. The three most recent tool results are preserved by default. After an upstream context-limit error, old results are cleared first; if that is insufficient, the newest oversized result keeps bounded head and tail evidence instead of being erased.
 

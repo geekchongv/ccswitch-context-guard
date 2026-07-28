@@ -4,11 +4,26 @@ import { Logger } from "./logger.js";
 interface HookPayload {
   session_id?: string;
   hook_event_name?: string;
+  cwd?: string;
+  prompt?: string;
   tool_calls?: Array<{
     tool_name?: string;
     tool_input?: unknown;
     tool_response?: unknown;
   }>;
+}
+
+export interface HookSessionEvent {
+  sessionId: string;
+  eventName: "UserPromptSubmit" | "PostCompact" | "SessionEnd";
+  cwd?: string;
+  promptFingerprint?: string;
+  timestamp: string;
+}
+
+function promptFingerprint(prompt?: string): string | undefined {
+  if (!prompt?.trim()) return undefined;
+  return createHash("sha256").update(prompt.trim()).digest("hex").slice(0, 24);
 }
 
 interface SessionObservation {
@@ -56,7 +71,10 @@ export class HookObserver {
   public readonly token = randomUUID();
   private readonly sessions = new Map<string, SessionObservation>();
 
-  public constructor(private readonly logger: Logger) {}
+  public constructor(
+    private readonly logger: Logger,
+    private readonly onSessionEvent?: (event: HookSessionEvent) => void,
+  ) {}
 
   public observe(payload: HookPayload): void {
     const sessionId = payload.session_id;
@@ -69,6 +87,13 @@ export class HookObserver {
     if (eventName === "SessionEnd") {
       this.sessions.delete(sessionId);
       this.logger.info("Claude hook session ended", { sessionId: sessionId.slice(0, 8) });
+      this.onSessionEvent?.({
+        sessionId,
+        eventName: "SessionEnd",
+        cwd: payload.cwd,
+        promptFingerprint: promptFingerprint(payload.prompt),
+        timestamp: new Date().toISOString(),
+      });
       return;
     }
 
@@ -81,6 +106,13 @@ export class HookObserver {
       });
       this.logger.info(eventName === "PostCompact" ? "Claude native compact observed" : "Claude hook turn started", {
         sessionId: sessionId.slice(0, 8),
+      });
+      this.onSessionEvent?.({
+        sessionId,
+        eventName,
+        cwd: payload.cwd,
+        promptFingerprint: promptFingerprint(payload.prompt),
+        timestamp: new Date().toISOString(),
       });
       return;
     }

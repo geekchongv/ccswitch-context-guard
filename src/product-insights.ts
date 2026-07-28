@@ -29,6 +29,7 @@ export interface ContextUsageSnapshot {
   remainingTokens: number;
   usagePercent: number;
   compactThreshold: number;
+  compactMode: AppConfig["tokenPolicy"]["compactMode"];
   toolClearTrigger: number;
   toolClearTarget: number;
   nativeCompactThreshold?: number;
@@ -147,7 +148,10 @@ export function buildContextUsage(entries: LogEntry[], config: AppConfig): Conte
   const currentTokens = Math.max(0, reading?.tokens ?? 0);
   const thresholds = [
     { label: "工具结果清理", tokens: toolClearTrigger },
-    { label: "代理压缩", tokens: compactThreshold },
+    {
+      label: config.tokenPolicy.compactMode === "proxy" ? "代理压缩" : "Compact 提醒",
+      tokens: compactThreshold,
+    },
     ...(nativeCompactThreshold === undefined ? [] : [{ label: "Claude 原生压缩", tokens: nativeCompactThreshold }]),
     { label: "硬保护", tokens: effectiveHardLimit },
   ].sort((a, b) => a.tokens - b.tokens);
@@ -166,6 +170,7 @@ export function buildContextUsage(entries: LogEntry[], config: AppConfig): Conte
     remainingTokens: Math.max(0, hardLimit - currentTokens),
     usagePercent: Math.round((currentTokens / hardLimit) * 1000) / 10,
     compactThreshold,
+    compactMode: config.tokenPolicy.compactMode,
     toolClearTrigger,
     toolClearTarget,
     nativeCompactThreshold,

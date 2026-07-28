@@ -72,6 +72,12 @@ export interface LoggingConfig {
 
 export interface RuntimeConfig {
   directory: string;
+  /** 单请求诊断记录最多保留数量。 */
+  sessionMaxRecords?: number;
+  /** 会话索引最多保留数量。 */
+  sessionMaxSessions?: number;
+  /** 会话与请求诊断记录保留天数。 */
+  sessionRetentionDays?: number;
 }
 
 export interface UiConfig {
@@ -175,9 +181,12 @@ export interface VisionAnalysisResult {
 
 export interface OrchestrationRecord {
   requestId: string;
+  sessionId?: string;
   timestamp: string;
   routePath?: string;
+  responseStatus?: number;
   budget: BudgetAssessment;
+  providerInputTokens?: number;
   compacted: boolean;
   compactWarning: boolean;
   chunked: boolean;

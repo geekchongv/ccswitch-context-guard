@@ -123,6 +123,14 @@ try {
   if (upstreamBodies[1].max_tokens !== 1024) {
     throw new Error(`retry max_tokens changed unexpectedly: ${upstreamBodies[1].max_tokens}`);
   }
+  const sessionsResponse = await fetch(`http://127.0.0.1:${proxyPort}/sessions`);
+  const sessions = await sessionsResponse.json();
+  if (!sessionsResponse.ok || sessions.sessions?.length !== 1) {
+    throw new Error(`packaged session registry mismatch: ${JSON.stringify(sessions)}`);
+  }
+  if (!(sessions.sessions[0]?.context?.currentTokens > 0)) {
+    throw new Error(`packaged session context was not recorded: ${JSON.stringify(sessions.sessions[0])}`);
+  }
   await fetch(`http://127.0.0.1:${proxyPort}/shutdown`, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -133,6 +141,7 @@ try {
     upstreamCalls: upstreamBodies.length,
     retryPreservedMaxTokens: upstreamBodies[1].max_tokens,
     structuralClearingObserved: true,
+    sessionRegistryObserved: true,
   }, null, 2));
 } finally {
   try {

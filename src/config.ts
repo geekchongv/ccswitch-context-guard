@@ -61,6 +61,9 @@ const defaultConfig: AppConfig = {
   },
   runtime: {
     directory: "./runtime",
+    sessionMaxRecords: 500,
+    sessionMaxSessions: 100,
+    sessionRetentionDays: 7,
   },
   ui: {
     enabled: true,

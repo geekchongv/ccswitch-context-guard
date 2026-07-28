@@ -4,6 +4,7 @@ import { AppConfig } from "./types.js";
 import { LogEntry } from "./logger.js";
 import { ProxyStatus } from "./proxy-runner.js";
 import { ContextUsageSnapshot, HealthSummary, ProtectionEvent } from "./product-insights.js";
+import { SessionRegistrySnapshot } from "./session-registry.js";
 
 type RendererConfig = AppConfig & {
   vision: AppConfig["vision"] & { apiKeyConfigured: boolean };
@@ -24,6 +25,7 @@ contextBridge.exposeInMainWorld("ccproxy", {
       events: ProtectionEvent[];
       context: ContextUsageSnapshot;
     };
+    sessions: SessionRegistrySnapshot;
   }>,
   saveConfig: (config: AppConfig, secretUpdate?: SecretUpdate) => ipcRenderer.invoke("app:saveConfig", config, secretUpdate) as Promise<{
     status: ProxyStatus | null;
@@ -48,6 +50,11 @@ contextBridge.exposeInMainWorld("ccproxy", {
     };
     ipcRenderer.on("proxy:insights", wrapped);
     return () => ipcRenderer.off("proxy:insights", wrapped);
+  },
+  onSessions: (listener: (sessions: SessionRegistrySnapshot) => void) => {
+    const wrapped = (_event: IpcRendererEvent, sessions: SessionRegistrySnapshot) => listener(sessions);
+    ipcRenderer.on("proxy:sessions", wrapped);
+    return () => ipcRenderer.off("proxy:sessions", wrapped);
   },
   onStopped: (listener: (payload: { reason: string }) => void) => {
     const wrapped = (_event: IpcRendererEvent, payload: { reason: string }) => listener(payload);

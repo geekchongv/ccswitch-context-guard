@@ -12,6 +12,7 @@ import { discoverUpstream } from "./upstream-discoverer.js";
 import { AppConfig } from "./types.js";
 import { DashboardStatus } from "./dashboard.js";
 import { HookObserver } from "./hook-observer.js";
+import { SessionRegistry } from "./session-registry.js";
 
 const MAX_PORT_TRIES = 100;
 const VERSION = APP_VERSION;
@@ -23,6 +24,7 @@ export interface ProxyHandle {
   logger: Logger;
   server: http.Server;
   patcher: ClaudeConfigPatcher;
+  sessionRegistry: SessionRegistry;
   getStatus(): ProxyStatus;
   shutdown(reason: string): Promise<void>;
 }
@@ -61,9 +63,14 @@ function openDashboard(url: string, logger: Logger): void {
 export async function startProxy(options: StartProxyOptions = {}): Promise<ProxyHandle> {
   const config = options.config ?? loadConfig();
   const logger = new Logger(config.logging);
-  const sessionStore = new SessionStore(config.runtime.directory);
-  const orchestrator = new Orchestrator(config, logger, sessionStore);
-  const hookObserver = new HookObserver(logger);
+  const sessionStore = new SessionStore(
+    config.runtime.directory,
+    config.runtime.sessionMaxRecords,
+    config.runtime.sessionRetentionDays,
+  );
+  const sessionRegistry = new SessionRegistry(config);
+  const orchestrator = new Orchestrator(config, logger, sessionStore, sessionRegistry);
+  const hookObserver = new HookObserver(logger, (event) => sessionRegistry.observeHook(event));
   const patcher = new ClaudeConfigPatcher(config, logger, hookObserver);
   const startedAt = new Date().toISOString();
 
@@ -100,6 +107,7 @@ export async function startProxy(options: StartProxyOptions = {}): Promise<Proxy
       void shutdown(reason).then(() => process.exit(0));
     },
     hookObserver: (config.claudeConfigPatch.hookObserverEnabled ?? true) ? hookObserver : undefined,
+    sessionRegistry,
   });
 
   if (config.server.autoPort ?? true) {
@@ -169,6 +177,7 @@ export async function startProxy(options: StartProxyOptions = {}): Promise<Proxy
     logger,
     server,
     patcher,
+    sessionRegistry,
     getStatus: () => status,
     shutdown,
   };

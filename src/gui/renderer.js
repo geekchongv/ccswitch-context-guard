@@ -4,6 +4,8 @@ let config = null;
 let status = null;
 let logs = [];
 let insights = null;
+let sessionsState = null;
+let selectedSessionId = null;
 let noticeTimer = null;
 let activePage = "overview";
 
@@ -20,6 +22,7 @@ const escapeHtml = (value) => String(value)
 
 const pageCopy = {
   overview: ["运行概览", "查看代理链路与上下文保护状态"],
+  sessions: ["会话", "分别查看每个 Claude 会话的上下文容量与保护记录"],
   config: ["代理设置", "配置网络、Token 策略与 Claude 集成"],
   vision: ["多模态", "管理图片预处理与视觉模型路由"],
   logs: ["运行日志", "检查实时事件与代理诊断信息"],
@@ -195,8 +198,96 @@ function renderContextUsage() {
 
   $("toolClearThreshold").textContent = thresholdCopy(context.toolClearTrigger, context.hardLimit);
   $("proxyCompactThreshold").textContent = thresholdCopy(context.compactThreshold, context.hardLimit);
+  $("proxyCompactLabel").textContent = context.compactMode === "proxy" ? "代理压缩" : "Compact 提醒";
   $("nativeCompactThreshold").textContent = thresholdCopy(context.nativeCompactThreshold, context.hardLimit);
   $("effectiveHardLimit").textContent = thresholdCopy(context.effectiveHardLimit, context.hardLimit);
+}
+
+function sessionStatusCopy(status) {
+  return {
+    waiting: "等待请求",
+    active: "请求中",
+    healthy: "容量健康",
+    cleanup: "工具清理区",
+    compact: "压缩区",
+    critical: "接近上限",
+    ended: "已结束",
+    error: "请求异常",
+  }[status] || status;
+}
+
+function sessionClientCopy(client) {
+  return {
+    "claude-code": "Claude Code",
+    "claude-desktop": "Claude Desktop",
+    unknown: "未知客户端",
+  }[client] || client;
+}
+
+function renderSessionDetail(session) {
+  const box = $("sessionDetail");
+  if (!session) {
+    box.innerHTML = '<div class="empty">选择一个会话查看上下文与保护记录</div>';
+    return;
+  }
+  const context = session.context;
+  const usage = Math.max(0, Math.min(100, context.usagePercent));
+  const compactLabel = context.compactMode === "proxy" ? "代理压缩" : "Compact 提醒";
+  const events = session.events.slice().reverse().map((event) => `
+    <div class="session-timeline-row">
+      <i class="session-timeline-dot"></i>
+      <span>${escapeHtml(event.label)}</span>
+      <time>${escapeHtml(formatTime(event.timestamp))}</time>
+    </div>
+  `).join("") || '<div class="empty">暂无会话事件</div>';
+
+  box.innerHTML = `
+    <div class="session-detail-hero">
+      <div><h2>${escapeHtml(session.title)}</h2><p>${escapeHtml(sessionClientCopy(session.client))} · ${escapeHtml(session.model || "模型待识别")} · ${escapeHtml(session.displayId)}</p></div>
+      <span class="session-badge ${escapeHtml(session.status)}">${escapeHtml(sessionStatusCopy(session.status))}</span>
+    </div>
+    <div class="session-usage-head"><strong>${escapeHtml(context.usagePercent.toFixed(1).replace(/\.0$/, ""))}%</strong><span>${escapeHtml(formatTokens(context.currentTokens))} / ${escapeHtml(formatTokens(context.hardLimit))}</span></div>
+    <div class="session-progress"><span style="width:${usage}%"></span></div>
+    <div class="session-detail-grid">
+      <div class="session-detail-metric"><span>当前占用</span><strong>${escapeHtml(formatTokens(context.currentTokens))}</strong></div>
+      <div class="session-detail-metric"><span>剩余容量</span><strong>${escapeHtml(formatTokens(context.remainingTokens))}</strong></div>
+      <div class="session-detail-metric"><span>请求次数</span><strong>${escapeHtml(session.requestCount)}</strong></div>
+      <div class="session-detail-metric"><span>压缩 / 清理</span><strong>${escapeHtml(session.compactCount)} / ${escapeHtml(session.cleanupCount)}</strong></div>
+    </div>
+    <div class="session-subsection">
+      <h3>保护节点</h3>
+      <div class="session-thresholds">
+        <div class="session-threshold"><span>工具结果清理</span><strong>${escapeHtml(thresholdCopy(context.toolClearTrigger, context.hardLimit))}</strong></div>
+        <div class="session-threshold"><span>${escapeHtml(compactLabel)}</span><strong>${escapeHtml(thresholdCopy(context.compactThreshold, context.hardLimit))}</strong></div>
+        <div class="session-threshold"><span>Claude 原生压缩</span><strong>${escapeHtml(thresholdCopy(context.nativeCompactThreshold, context.hardLimit))}</strong></div>
+        <div class="session-threshold"><span>硬保护</span><strong>${escapeHtml(thresholdCopy(context.effectiveHardLimit, context.hardLimit))}</strong></div>
+      </div>
+    </div>
+    <div class="session-subsection"><h3>最近事件</h3><div class="session-timeline">${events}</div></div>
+  `;
+}
+
+function renderSessions() {
+  const sessions = sessionsState?.sessions || [];
+  $("sessionCount").textContent = `${sessionsState?.activeCount || 0} 活跃 · ${sessions.length} 总计`;
+  if (!sessions.length) {
+    $("sessionList").innerHTML = '<div class="empty">等待 Claude 会话…<br>会话建立后会自动出现在这里。</div>';
+    selectedSessionId = null;
+    renderSessionDetail(null);
+    return;
+  }
+
+  if (!selectedSessionId || !sessions.some((session) => session.id === selectedSessionId)) {
+    selectedSessionId = sessionsState?.highestUsageSessionId || sessions[0].id;
+  }
+  $("sessionList").innerHTML = sessions.map((session) => `
+    <button class="session-row${session.id === selectedSessionId ? " active" : ""}" data-session-id="${escapeHtml(session.id)}">
+      <i class="session-state-dot ${escapeHtml(session.status)}"></i>
+      <span class="session-row-copy"><strong>${escapeHtml(session.title)}</strong><span>${escapeHtml(sessionClientCopy(session.client))} · ${escapeHtml(formatTime(session.lastActiveAt))}</span></span>
+      <span class="session-row-usage">${escapeHtml(session.context.usagePercent.toFixed(0))}%</span>
+    </button>
+  `).join("");
+  renderSessionDetail(sessions.find((session) => session.id === selectedSessionId));
 }
 
 function renderInsights() {
@@ -362,6 +453,7 @@ function switchPage(page) {
   $("pageSubtitle").textContent = subtitle;
   document.querySelector(".main").scrollTop = 0;
   if (page === "logs") renderLogs();
+  if (page === "sessions") renderSessions();
 }
 
 function applyTheme(theme) {
@@ -398,19 +490,28 @@ async function boot() {
   status = state.status;
   logs = state.logs || [];
   insights = state.insights || null;
+  sessionsState = state.sessions || null;
   fillForm();
   renderStatus();
   renderLogs();
   renderInsights();
+  renderSessions();
 
   api.onStatus((next) => { status = next; renderStatus(); });
   api.onLog((entry) => { logs.push(entry); if (logs.length > 1200) logs = logs.slice(-1000); renderLogs(); });
   api.onInsights((next) => { insights = next; renderInsights(); });
+  api.onSessions((next) => { sessionsState = next; renderSessions(); });
   api.onStopped(() => { status = null; renderStatus(); });
 }
 
 document.querySelectorAll(".nav-button").forEach((button) => button.addEventListener("click", () => switchPage(button.dataset.page)));
 document.querySelectorAll("[data-page-jump]").forEach((button) => button.addEventListener("click", () => switchPage(button.dataset.pageJump)));
+$("sessionList").addEventListener("click", (event) => {
+  const row = event.target.closest("[data-session-id]");
+  if (!row) return;
+  selectedSessionId = row.dataset.sessionId;
+  renderSessions();
+});
 $("saveConfig").addEventListener("click", saveAndRestart);
 $("saveVision").addEventListener("click", saveAndRestart);
 $("restartProxy").addEventListener("click", () => runProxyAction(() => api.restartProxy(), "正在重启代理…", "代理已重新启动。"));

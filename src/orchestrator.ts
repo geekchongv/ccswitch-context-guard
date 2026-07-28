@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { AppConfig, ChatCompletionRequest, OrchestrationRecord } from "./types.js";
 import { Logger } from "./logger.js";
 import { SessionStore } from "./session-store.js";
+import { SessionRegistry } from "./session-registry.js";
 import { assessBudget, estimateRequestTokens } from "./token-estimator.js";
 import { compactRequest } from "./compactor.js";
 import { enrichRequestWithVision, getVisionInputDiagnostics } from "./modality-router.js";
@@ -258,6 +259,7 @@ export class Orchestrator {
     private readonly config: AppConfig,
     private readonly logger: Logger,
     private readonly sessionStore: SessionStore,
+    private readonly sessionRegistry?: SessionRegistry,
   ) {
     this.upstreamClient = new UpstreamClient(config.upstream, logger);
   }
@@ -312,11 +314,20 @@ export class Orchestrator {
     routePath: string,
     request: ChatCompletionRequest,
     upstreamHeaders: Record<string, string> = {},
+    sessionId?: string,
   ): Promise<Response> {
     const requestId = randomUUID();
     const timestamp = new Date().toISOString();
 
-    this.logger.info("收到请求", { requestId, routePath });
+    this.logger.info("收到请求", { requestId, routePath, sessionId: sessionId?.slice(0, 12) });
+    if (sessionId) {
+      this.sessionRegistry?.requestStarted(sessionId, {
+        requestId,
+        routePath,
+        model: request.model,
+        timestamp,
+      });
+    }
 
     const withVision = await enrichRequestWithVision(request, this.config.vision, async (fileId) => {
       const encodedFileId = encodeURIComponent(fileId);
@@ -351,6 +362,7 @@ export class Orchestrator {
     let retriedAfterContextError = false;
     let toolResultsCleared = 0;
     let toolResultTokensCleared = 0;
+    let providerInputTokens: number | undefined;
 
     if (agentToolProtocol && (this.config.tokenPolicy.toolResultClearingEnabled ?? true)) {
       const { trigger, target, keepRecent } = resolveToolResultPolicy(this.config);
@@ -386,6 +398,7 @@ export class Orchestrator {
       this.config.tokenPolicy.responseReserve,
       this.config.tokenPolicy.safetyMargin,
     );
+    if (sessionId) this.sessionRegistry?.updateBudget(sessionId, requestId, budget, timestamp);
 
     this.logger.debug("Token预算评估", {
       requestId,
@@ -539,9 +552,12 @@ export class Orchestrator {
           });
           this.saveRecord({
             requestId,
+            sessionId,
             timestamp,
             routePath,
+            responseStatus: chunkResponse.status,
             budget,
+            providerInputTokens,
             compacted,
             compactWarning,
             chunked,
@@ -583,9 +599,12 @@ export class Orchestrator {
         });
         this.saveRecord({
           requestId,
+          sessionId,
           timestamp,
           routePath,
+          responseStatus: synthesisResponse.status,
           budget,
+          providerInputTokens,
           compacted,
           compactWarning,
           chunked,
@@ -596,6 +615,7 @@ export class Orchestrator {
         return replayResponse;
       }
       const synthesisUsage = await captureUpstreamUsage(synthesisResponse);
+      providerInputTokens = synthesisUsage.inputTokens;
 
       this.logger.info("请求完成", {
         requestId,
@@ -617,9 +637,12 @@ export class Orchestrator {
 
       this.saveRecord({
         requestId,
+        sessionId,
         timestamp,
         routePath,
+        responseStatus: synthesisResponse.status,
         budget,
+        providerInputTokens,
         compacted,
         compactWarning,
         chunked,
@@ -860,6 +883,7 @@ export class Orchestrator {
 
     if (response.ok) {
       const usage = await captureUpstreamUsage(response);
+      providerInputTokens = usage.inputTokens;
       response = usage.replayResponse;
       this.logger.info("请求完成", {
         requestId,
@@ -882,9 +906,12 @@ export class Orchestrator {
 
     this.saveRecord({
       requestId,
+      sessionId,
       timestamp,
       routePath,
+      responseStatus: response.status,
       budget,
+      providerInputTokens,
       compacted,
       compactWarning,
       chunked,
@@ -900,6 +927,7 @@ export class Orchestrator {
 
   private saveRecord(record: OrchestrationRecord): void {
     this.sessionStore.saveRecord(record);
+    this.sessionRegistry?.requestCompleted(record);
     this.logger.debug("已保存会话编排记录", {
       requestId: record.requestId,
       routePath: record.routePath,

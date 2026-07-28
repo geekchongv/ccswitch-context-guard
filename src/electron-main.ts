@@ -16,6 +16,7 @@ import {
 let mainWindow: BrowserWindow | null = null;
 let proxyHandle: ProxyHandle | null = null;
 let isQuitting = false;
+let insightsTimer: ReturnType<typeof setTimeout> | null = null;
 const headless = process.env.CCPROXY_HEADLESS === "1";
 
 // The control center is text/forms only. Software rendering avoids driver-specific
@@ -94,12 +95,32 @@ function getInsights() {
       config,
     }),
     events: extractProtectionEvents(logs, 16),
-    context: buildContextUsage(logs, config),
+    context: proxyHandle?.sessionRegistry.overviewContext() ?? buildContextUsage(logs, config),
+  };
+}
+
+function getSessions() {
+  return proxyHandle?.sessionRegistry.snapshot() ?? {
+    sessions: [],
+    activeCount: 0,
+    updatedAt: new Date().toISOString(),
   };
 }
 
 function sendInsights(): void {
   sendToWindow("proxy:insights", getInsights());
+}
+
+function scheduleInsights(): void {
+  if (insightsTimer) return;
+  insightsTimer = setTimeout(() => {
+    insightsTimer = null;
+    sendInsights();
+  }, 120);
+}
+
+function sendSessions(): void {
+  sendToWindow("proxy:sessions", getSessions());
 }
 
 async function stopProxy(reason: string): Promise<void> {
@@ -123,9 +144,14 @@ async function startGuiProxy(): Promise<void> {
   });
   proxyHandle.logger.onLog((entry) => {
     sendToWindow("proxy:log", entry);
+    scheduleInsights();
+  });
+  proxyHandle.sessionRegistry.onChange(() => {
+    sendSessions();
     sendInsights();
   });
   sendToWindow("proxy:status", proxyHandle.getStatus());
+  sendSessions();
   sendInsights();
 }
 
@@ -169,6 +195,7 @@ ipcMain.handle("app:getState", () => ({
   config: rendererConfig(proxyHandle?.config ?? loadRuntimeConfig()),
   logs: proxyHandle?.logger.snapshot() ?? [],
   insights: getInsights(),
+  sessions: getSessions(),
 }));
 
 ipcMain.handle("app:saveConfig", async (_event, config: AppConfig, secretUpdate?: {

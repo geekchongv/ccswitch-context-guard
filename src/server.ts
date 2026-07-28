@@ -6,6 +6,7 @@ import { Orchestrator } from "./orchestrator.js";
 import { UpstreamClient } from "./upstream-client.js";
 import { DashboardStatus, renderDashboard, renderNotFound, serializeLogs } from "./dashboard.js";
 import { HookObserver } from "./hook-observer.js";
+import { SessionRegistry } from "./session-registry.js";
 
 class RequestBodyTooLargeError extends Error {
   public constructor(public readonly maxBytes: number) {
@@ -114,6 +115,7 @@ export interface ServerOptions {
   getStatus?: () => DashboardStatus;
   requestShutdown?: (reason: string) => void;
   hookObserver?: HookObserver;
+  sessionRegistry?: SessionRegistry;
 }
 
 function isLoopbackRequest(request: http.IncomingMessage): boolean {
@@ -130,6 +132,7 @@ export function createServer(
   const upstreamClient = new UpstreamClient(config.upstream, logger);
 
   return http.createServer(async (request, response) => {
+    let resolvedSessionId: string | undefined;
     try {
       const routeWithQuery = request.url ?? "/";
       const routePath = routeWithQuery.split("?")[0] ?? "/";
@@ -154,6 +157,15 @@ export function createServer(
 
       if (request.method === "GET" && config.ui.enabled && routePath === "/logs") {
         writeJson(response, 200, serializeLogs(logger.snapshot()));
+        return;
+      }
+
+      if (request.method === "GET" && config.ui.enabled && routePath === "/sessions") {
+        writeJson(response, 200, options.sessionRegistry?.snapshot() ?? {
+          sessions: [],
+          activeCount: 0,
+          updatedAt: new Date().toISOString(),
+        });
         return;
       }
 
@@ -205,7 +217,9 @@ export function createServer(
           method: request.method,
         });
         const parsed = JSON.parse(rawBody.toString("utf8")) as ChatCompletionRequest;
-        const upstreamResponse = await orchestrator.handle(routePath, parsed, getForwardedHeaders(request));
+        const forwardedHeaders = getForwardedHeaders(request);
+        resolvedSessionId = options.sessionRegistry?.resolveRequest(parsed, routePath, forwardedHeaders);
+        const upstreamResponse = await orchestrator.handle(routePath, parsed, forwardedHeaders, resolvedSessionId);
         await pipeUpstreamResponse(upstreamResponse, response);
         return;
       }
@@ -240,6 +254,12 @@ export function createServer(
       logger.error("Request handling failed", {
         message: error instanceof Error ? error.message : String(error),
       });
+      if (resolvedSessionId) {
+        options.sessionRegistry?.requestFailed(
+          resolvedSessionId,
+          error instanceof Error ? error.message : "请求失败",
+        );
+      }
       writeJson(response, 500, {
         error: "ccproxy-agent internal error",
       });

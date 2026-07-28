@@ -178,6 +178,51 @@
     .stat-icon { display: grid; place-items: center; width: 25px; height: 25px; border-radius: 7px; color: var(--accent-dark); background: var(--accent-soft); }
     .stat-icon svg { width: 13px; height: 13px; }
     .dashboard-grid { display: grid; grid-template-columns: minmax(300px, .8fr) minmax(420px, 1.2fr); gap: 14px; margin-bottom: 14px; }
+    .sessions-layout { display: grid; grid-template-columns: minmax(280px, 350px) minmax(0, 1fr); gap: 14px; align-items: start; }
+    .sessions-list-card, .session-detail-card { min-height: calc(100vh - 138px); overflow: hidden; }
+    .sessions-list { display: grid; gap: 6px; max-height: calc(100vh - 204px); overflow: auto; padding: 9px; }
+    .session-row { display: grid; grid-template-columns: 9px minmax(0, 1fr) auto; gap: 10px; align-items: start; width: 100%; padding: 12px 11px; border: 1px solid transparent; border-radius: 10px; color: var(--text); background: transparent; cursor: pointer; text-align: left; }
+    .session-row:hover { background: var(--surface-muted); }
+    .session-row.active { border-color: var(--line); background: var(--surface-muted); box-shadow: 0 1px 2px rgba(0,0,0,.03); }
+    .session-state-dot { width: 8px; height: 8px; margin-top: 5px; border-radius: 50%; background: var(--green); }
+    .session-state-dot.active { background: var(--blue); box-shadow: 0 0 0 3px var(--blue-soft); }
+    .session-state-dot.cleanup, .session-state-dot.compact { background: var(--amber); box-shadow: 0 0 0 3px var(--amber-soft); }
+    .session-state-dot.critical, .session-state-dot.error { background: var(--red); box-shadow: 0 0 0 3px var(--red-soft); }
+    .session-state-dot.ended, .session-state-dot.waiting { background: var(--subtle); }
+    .session-row-copy { min-width: 0; }
+    .session-row-copy strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+    .session-row-copy span { display: block; margin-top: 3px; overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+    .session-row-usage { color: var(--muted); font-size: 11px; font-weight: 700; }
+    .session-detail { padding: 20px; }
+    .session-detail-hero { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
+    .session-detail-hero h2 { margin: 0; font-size: 19px; letter-spacing: -.025em; }
+    .session-detail-hero p { margin: 4px 0 0; color: var(--muted); font-size: 11px; }
+    .session-badge { padding: 5px 9px; border-radius: 999px; color: var(--green); background: var(--green-soft); font-size: 10px; font-weight: 700; white-space: nowrap; }
+    .session-badge.active { color: var(--blue); background: var(--blue-soft); }
+    .session-badge.cleanup, .session-badge.compact { color: var(--amber); background: var(--amber-soft); }
+    .session-badge.critical, .session-badge.error { color: var(--red); background: var(--red-soft); }
+    .session-badge.ended, .session-badge.waiting { color: var(--muted); background: var(--surface-muted); }
+    .session-usage-head { display: flex; align-items: baseline; justify-content: space-between; margin-top: 26px; }
+    .session-usage-head strong { font-size: 26px; letter-spacing: -.04em; }
+    .session-usage-head span { color: var(--muted); font-size: 11px; }
+    .session-progress { height: 12px; margin-top: 10px; overflow: hidden; border: 1px solid var(--line); border-radius: 999px; background: var(--surface-muted); }
+    .session-progress span { display: block; width: 0; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--green), var(--accent)); }
+    .session-detail-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 16px; }
+    .session-detail-metric { padding: 11px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-muted); }
+    .session-detail-metric span { display: block; color: var(--muted); font-size: 9px; }
+    .session-detail-metric strong { display: block; margin-top: 3px; font-size: 13px; }
+    .session-subsection { margin-top: 24px; }
+    .session-subsection h3 { margin: 0 0 9px; font-size: 12px; }
+    .session-thresholds { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+    .session-threshold { padding: 10px; border-left: 3px solid var(--line-strong); border-radius: 6px; background: var(--surface-muted); }
+    .session-threshold span { display: block; color: var(--muted); font-size: 9px; }
+    .session-threshold strong { display: block; margin-top: 2px; font-size: 11px; }
+    .session-timeline { display: grid; gap: 0; max-height: 230px; overflow: auto; }
+    .session-timeline-row { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 9px 2px; border-bottom: 1px solid var(--line); }
+    .session-timeline-row:last-child { border-bottom: 0; }
+    .session-timeline-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--blue); }
+    .session-timeline-row span { font-size: 11px; }
+    .session-timeline-row time { color: var(--subtle); font-size: 9px; }
     .card-head { display: flex; align-items: center; justify-content: space-between; min-height: 52px; padding: 0 17px; border-bottom: 1px solid var(--line); }
     .card-head h3 { margin: 0; font-size: 13px; font-weight: 680; }
     .card-meta { color: var(--muted); font-size: 11px; }
@@ -240,6 +285,8 @@
       .control-buttons .full { grid-column: auto; }
       .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .dashboard-grid { grid-template-columns: 1fr; }
+      .sessions-layout { grid-template-columns: 300px minmax(0, 1fr); }
+      .session-detail-grid, .session-thresholds { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
     @media (max-width: 940px) {
       .context-layout { grid-template-columns: 1fr; }
@@ -263,6 +310,10 @@
         <button class="nav-button active" data-page="overview">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 13h6V4H4v9Zm0 7h6v-4H4v4Zm10 0h6v-9h-6v9Zm0-16v4h6V4h-6Z" stroke-linejoin="round"/></svg>
           <span>运行概览</span>
+        </button>
+        <button class="nav-button" data-page="sessions">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M7 5h10M7 12h10M7 19h10"/><circle cx="3.5" cy="5" r="1"/><circle cx="3.5" cy="12" r="1"/><circle cx="3.5" cy="19" r="1"/></svg>
+          <span>会话</span>
         </button>
         <button class="nav-button" data-page="config">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 7h10M18 7h2M4 17h2m4 0h10M14 4v6M6 14v6" stroke-linecap="round"/></svg>
@@ -357,7 +408,7 @@
                 </div>
                 <div class="threshold-list">
                   <div class="threshold-item"><span>工具清理</span><strong id="toolClearThreshold">140k · 70%</strong></div>
-                  <div class="threshold-item"><span>代理压缩</span><strong id="proxyCompactThreshold">160k · 80%</strong></div>
+                  <div class="threshold-item"><span id="proxyCompactLabel">代理压缩</span><strong id="proxyCompactThreshold">160k · 80%</strong></div>
                   <div class="threshold-item"><span>Claude 原生压缩</span><strong id="nativeCompactThreshold">170k · 85%</strong></div>
                   <div class="threshold-item"><span>硬保护</span><strong id="effectiveHardLimit">192k · 96%</strong></div>
                 </div>
@@ -381,6 +432,18 @@
             <div class="card-head"><h3>实时日志</h3><button class="button" data-page-jump="logs">查看全部</button></div>
             <pre id="recentLogs">等待日志…</pre>
           </article>
+        </section>
+
+        <section id="sessions" class="section">
+          <div class="sessions-layout">
+            <article class="card sessions-list-card">
+              <div class="card-head"><h3>会话列表</h3><span id="sessionCount" class="card-meta">0 个</span></div>
+              <div id="sessionList" class="sessions-list"><div class="empty">等待 Claude 会话…</div></div>
+            </article>
+            <article class="card session-detail-card">
+              <div id="sessionDetail" class="session-detail"><div class="empty">选择一个会话查看上下文与保护记录</div></div>
+            </article>
+          </div>
         </section>
 
         <section id="config" class="section">

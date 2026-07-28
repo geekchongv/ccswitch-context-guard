@@ -42,3 +42,21 @@ test("HookObserver records only aggregate tool telemetry", () => {
   });
   assert.equal(JSON.stringify(entry).includes("secret.ts"), false);
 });
+
+test("HookObserver emits session metadata with a prompt hash instead of prompt content", () => {
+  mkdirSync("test-output/logs", { recursive: true });
+  const events: unknown[] = [];
+  const observer = new HookObserver(
+    new Logger({ level: "error", directory: "./test-output/logs" }),
+    (event) => events.push(event),
+  );
+  observer.observe({
+    session_id: "session-private",
+    hook_event_name: "UserPromptSubmit",
+    cwd: "C:\\work\\project",
+    prompt: "private prompt body",
+  });
+  assert.equal(events.length, 1);
+  assert.equal(JSON.stringify(events).includes("private prompt body"), false);
+  assert.match(JSON.stringify(events), /promptFingerprint/);
+});

@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.4.104
+
+- Added a dedicated Sessions page with a stable master/detail layout, per-session 200k usage, protection thresholds, request counts, compaction/cleanup counters, and recent events.
+- Added `SessionRegistry` to isolate concurrent Claude sessions instead of deriving one global context reading from whichever request finished last.
+- Correlates Claude Hook sessions and API requests using explicit session fields, irreversible identifiers, stable conversation fingerprints, and prompt hashes for out-of-order concurrent requests.
+- Emits dedicated session state updates to the GUI; log-derived insights are now debounced and no longer drive the live context meter.
+- Caps per-request diagnostic files at 500 and the persisted session index at 100 sessions / 7 days by default.
+- Fixed compact threshold labels to respect `compactMode` and prevented older concurrent requests from overwriting newer context readings.
+
 ## v0.4.103
 
 - Rebuilt the overview around a live 200k context-capacity panel showing current input tokens, usage percentage, remaining capacity, data source, and the next protection action.
