@@ -127,6 +127,50 @@
     .button.danger { color: var(--red); border-color: color-mix(in srgb, var(--red) 35%, var(--line)); background: var(--red-soft); }
     .button.full { grid-column: 1 / -1; }
     .button svg { width: 14px; height: 14px; }
+    .context-card { margin-bottom: 14px; overflow: hidden; }
+    .context-card .card-head { min-height: 58px; }
+    .context-heading { display: flex; align-items: center; gap: 10px; }
+    .context-heading-copy h3 { margin: 0; }
+    .context-heading-copy p { margin: 2px 0 0; color: var(--muted); font-size: 11px; }
+    .context-status { display: inline-flex; align-items: center; gap: 7px; padding: 5px 9px; border-radius: 999px; color: var(--green); background: var(--green-soft); font-size: 10px; font-weight: 720; }
+    .context-status.cleanup, .context-status.compact { color: var(--amber); background: var(--amber-soft); }
+    .context-status.critical { color: var(--red); background: var(--red-soft); }
+    .context-status.idle { color: var(--muted); background: var(--surface-muted); }
+    .context-layout { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 26px; align-items: center; padding: 22px 24px 24px; }
+    .context-gauge-wrap { display: grid; place-items: center; }
+    .context-gauge {
+      --usage: 0%;
+      position: relative;
+      display: grid;
+      place-items: center;
+      width: 172px;
+      height: 172px;
+      border-radius: 50%;
+      background: conic-gradient(var(--accent) var(--usage), var(--surface-muted) 0);
+      box-shadow: inset 0 0 0 1px var(--line);
+    }
+    .context-gauge::before { content: ""; position: absolute; inset: 14px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); box-shadow: var(--shadow); }
+    .gauge-value { position: relative; z-index: 1; text-align: center; }
+    .gauge-value strong { display: block; font-size: 31px; line-height: 1; letter-spacing: -.045em; }
+    .gauge-value span { display: block; margin-top: 7px; color: var(--muted); font-size: 11px; }
+    .context-main { min-width: 0; }
+    .context-summary { display: flex; align-items: baseline; justify-content: space-between; gap: 18px; }
+    .context-summary h3 { margin: 0; font-size: 20px; letter-spacing: -.025em; }
+    .context-summary p { margin: 0; color: var(--muted); font-size: 11px; text-align: right; }
+    .context-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 16px; }
+    .context-metric { padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-muted); }
+    .context-metric span { display: block; color: var(--muted); font-size: 10px; }
+    .context-metric strong { display: block; margin-top: 3px; font-size: 14px; }
+    .threshold-rail { position: relative; height: 10px; margin: 24px 3px 0; border-radius: 999px; background: var(--surface-muted); box-shadow: inset 0 0 0 1px var(--line); }
+    .threshold-fill { width: 0; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--green), var(--accent)); transition: width .3s ease; }
+    .threshold-marker { position: absolute; top: -4px; width: 2px; height: 18px; border-radius: 2px; background: var(--line-strong); transform: translateX(-1px); }
+    .threshold-marker.compact { background: var(--accent); }
+    .threshold-marker.native { background: var(--amber); }
+    .threshold-marker.limit { background: var(--red); }
+    .threshold-list { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: 13px; }
+    .threshold-item { min-width: 0; }
+    .threshold-item span { display: block; color: var(--muted); font-size: 9px; white-space: nowrap; }
+    .threshold-item strong { display: block; margin-top: 2px; font-size: 11px; }
     .stats-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
     .stat-card { min-height: 94px; padding: 16px; }
     .stat-card .label { display: flex; align-items: center; justify-content: space-between; color: var(--muted); font-size: 11px; }
@@ -191,10 +235,15 @@
     .kbd { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 19px; padding: 0 5px; border: 1px solid var(--line-strong); border-radius: 5px; color: var(--muted); background: var(--surface-muted); font-size: 10px; box-shadow: 0 1px 0 var(--line-strong); }
     @media (max-width: 1100px) {
       .hero { grid-template-columns: 1fr; }
+      .context-layout { grid-template-columns: 190px minmax(0, 1fr); gap: 18px; }
       .control-buttons { grid-template-columns: repeat(3, 1fr); }
       .control-buttons .full { grid-column: auto; }
       .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .dashboard-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 940px) {
+      .context-layout { grid-template-columns: 1fr; }
+      .context-summary { align-items: flex-start; }
     }
     @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation: none !important; transition: none !important; } }
   </style>
@@ -275,6 +324,46 @@
               </div>
             </article>
           </div>
+
+          <article class="card context-card">
+            <div class="card-head">
+              <div class="context-heading">
+                <div class="context-heading-copy"><h3>上下文容量</h3><p>以最近一次请求为准，实时观察 200k 窗口与保护节点</p></div>
+              </div>
+              <span id="contextStatus" class="context-status idle">等待首个请求</span>
+            </div>
+            <div class="context-layout">
+              <div class="context-gauge-wrap">
+                <div id="contextGauge" class="context-gauge" role="progressbar" aria-label="上下文使用率" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                  <div class="gauge-value"><strong id="contextPercent">0%</strong><span id="contextGaugeCaption">0 / 200k</span></div>
+                </div>
+              </div>
+              <div class="context-main">
+                <div class="context-summary">
+                  <h3 id="contextHeadline">等待上下文数据</h3>
+                  <p id="contextNext">首个模型请求完成后自动更新</p>
+                </div>
+                <div class="context-metrics">
+                  <div class="context-metric"><span>当前占用</span><strong id="contextCurrent">—</strong></div>
+                  <div class="context-metric"><span>剩余容量</span><strong id="contextRemaining">200k</strong></div>
+                  <div class="context-metric"><span>上下文上限</span><strong id="contextLimit">200k</strong></div>
+                </div>
+                <div class="threshold-rail" aria-hidden="true">
+                  <div id="contextFill" class="threshold-fill"></div>
+                  <span id="toolClearMarker" class="threshold-marker"></span>
+                  <span id="proxyCompactMarker" class="threshold-marker compact"></span>
+                  <span id="nativeCompactMarker" class="threshold-marker native"></span>
+                  <span id="hardLimitMarker" class="threshold-marker limit"></span>
+                </div>
+                <div class="threshold-list">
+                  <div class="threshold-item"><span>工具清理</span><strong id="toolClearThreshold">140k · 70%</strong></div>
+                  <div class="threshold-item"><span>代理压缩</span><strong id="proxyCompactThreshold">160k · 80%</strong></div>
+                  <div class="threshold-item"><span>Claude 原生压缩</span><strong id="nativeCompactThreshold">170k · 85%</strong></div>
+                  <div class="threshold-item"><span>硬保护</span><strong id="effectiveHardLimit">192k · 96%</strong></div>
+                </div>
+              </div>
+            </div>
+          </article>
 
           <div class="stats-grid">
             <article class="card stat-card"><div class="label"><span>监听地址</span><span class="stat-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 12h14M12 5l7 7-7 7"/></svg></span></div><strong id="listen">—</strong></article>

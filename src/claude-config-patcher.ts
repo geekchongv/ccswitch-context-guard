@@ -261,13 +261,15 @@ export class ClaudeConfigPatcher {
       const hardLimit = this.config.tokenPolicy.hardLimit;
       const reserve = Math.max(1, this.config.claudeConfigPatch.autoCompactReserveTokens ?? 30_000);
       const pct = Math.max(1, Math.min(95, Math.floor(((hardLimit - reserve) / hardLimit) * 100)));
+      const legacyManagedCompact = nextEnv.CLAUDE_CODE_AUTO_COMPACT_WINDOW === "130000"
+        && nextEnv.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE === "76";
 
-      if (nextEnv.CLAUDE_CODE_AUTO_COMPACT_WINDOW === undefined) {
+      if (nextEnv.CLAUDE_CODE_AUTO_COMPACT_WINDOW === undefined || legacyManagedCompact) {
         state.previousAutoCompactWindow = undefined;
         state.patchedAutoCompactWindow = String(hardLimit);
         nextEnv.CLAUDE_CODE_AUTO_COMPACT_WINDOW = state.patchedAutoCompactWindow;
       }
-      if (nextEnv.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE === undefined) {
+      if (nextEnv.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE === undefined || legacyManagedCompact) {
         state.previousAutoCompactPct = undefined;
         state.patchedAutoCompactPct = String(pct);
         nextEnv.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE = state.patchedAutoCompactPct;

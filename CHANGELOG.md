@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.4.103
+
+- Rebuilt the overview around a live 200k context-capacity panel showing current input tokens, usage percentage, remaining capacity, data source, and the next protection action.
+- Added visible markers for tool-result cleanup, proxy compaction, Claude native compaction, and the effective hard-protection limit.
+- Replaced the legacy 130k/76% defaults with a 200k window, 140k cleanup, 160k proxy compact, 170k native compact, and 192k effective hard-protection policy.
+- Automatically migrates the exact legacy CCProxy-managed context policy and Claude auto-compact environment pair while preserving unrelated and custom settings.
+
+## v0.4.102
+
+- Fixed a post-compact hang where Agent tool sessions looped indefinitely on small tool calls: when `totalTokens` exceeded the compact threshold and the request carried the Agent tool protocol, the proxy previously deferred compaction to "Claude native compact" as a no-op, so each turn cleared old tool results, tokens rebound on the next turn, and the session appeared frozen. Agent tool sessions now run the same `compactRequest` path as ordinary requests when `compactMode === "proxy"`.
+- Added structured compaction logging so operators can see what was compacted. `compactRequest` now emits one warn per compaction with the short/long path, before/after message count, before/after tokens, and the compact block token budget; below-threshold cases emit a debug line. The compaction event also records `agentToolProtocol` so Agent-tool compactions are distinguishable from ordinary ones.
+
 ## v0.4.101
 
 - Fixed actual Claude Desktop image recognition for `container_upload` / `file_id` payloads by downloading image bytes through the matching upstream Files API before calling the configured vision model.

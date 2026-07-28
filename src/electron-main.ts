@@ -5,7 +5,7 @@ import { startProxy, ProxyHandle } from "./proxy-runner.js";
 import { AppConfig } from "./types.js";
 import { loadConfig, saveConfig } from "./config.js";
 import { setBaseDirectory } from "./paths.js";
-import { buildHealthSummary, extractProtectionEvents } from "./product-insights.js";
+import { buildContextUsage, buildHealthSummary, extractProtectionEvents } from "./product-insights.js";
 import {
   clearVisionApiKey,
   hasVisionApiKey,
@@ -94,6 +94,7 @@ function getInsights() {
       config,
     }),
     events: extractProtectionEvents(logs, 16),
+    context: buildContextUsage(logs, config),
   };
 }
 

@@ -3,7 +3,7 @@ import type { IpcRendererEvent } from "electron";
 import { AppConfig } from "./types.js";
 import { LogEntry } from "./logger.js";
 import { ProxyStatus } from "./proxy-runner.js";
-import { HealthSummary, ProtectionEvent } from "./product-insights.js";
+import { ContextUsageSnapshot, HealthSummary, ProtectionEvent } from "./product-insights.js";
 
 type RendererConfig = AppConfig & {
   vision: AppConfig["vision"] & { apiKeyConfigured: boolean };
@@ -22,6 +22,7 @@ contextBridge.exposeInMainWorld("ccproxy", {
     insights: {
       health: HealthSummary;
       events: ProtectionEvent[];
+      context: ContextUsageSnapshot;
     };
   }>,
   saveConfig: (config: AppConfig, secretUpdate?: SecretUpdate) => ipcRenderer.invoke("app:saveConfig", config, secretUpdate) as Promise<{
@@ -41,8 +42,8 @@ contextBridge.exposeInMainWorld("ccproxy", {
     ipcRenderer.on("proxy:log", wrapped);
     return () => ipcRenderer.off("proxy:log", wrapped);
   },
-  onInsights: (listener: (insights: { health: HealthSummary; events: ProtectionEvent[] }) => void) => {
-    const wrapped = (_event: IpcRendererEvent, insights: { health: HealthSummary; events: ProtectionEvent[] }) => {
+  onInsights: (listener: (insights: { health: HealthSummary; events: ProtectionEvent[]; context: ContextUsageSnapshot }) => void) => {
+    const wrapped = (_event: IpcRendererEvent, insights: { health: HealthSummary; events: ProtectionEvent[]; context: ContextUsageSnapshot }) => {
       listener(insights);
     };
     ipcRenderer.on("proxy:insights", wrapped);

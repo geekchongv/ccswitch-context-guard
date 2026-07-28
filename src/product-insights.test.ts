@@ -1,9 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildHealthSummary, extractProtectionEvents } from "./product-insights.js";
+import { buildContextUsage, buildHealthSummary, extractProtectionEvents } from "./product-insights.js";
 import { LogEntry } from "./logger.js";
+import { AppConfig } from "./types.js";
 
-const baseConfig = {
+const baseConfig: AppConfig = {
   server: { host: "127.0.0.1", port: 15723, autoPort: true },
   upstream: {
     baseUrl: "http://127.0.0.1:15722",
@@ -17,7 +18,7 @@ const baseConfig = {
     safetyMargin: 8000,
     responseReserve: 4096,
     chunkTarget: 90000,
-    compactMode: "warn" as const,
+    compactMode: "warn",
     compactWarningText: "compact please",
     autoReduceMaxTokens: true,
     retryOnContextError: true,
@@ -38,10 +39,10 @@ const baseConfig = {
     stripImagesAfterSummary: true,
     systemPrompt: "summarize",
   },
-  logging: { level: "info" as const, directory: "logs" },
+  logging: { level: "info", directory: "logs" },
   runtime: { directory: "runtime" },
   claudeConfigPatch: { enabled: true, settingsPath: undefined },
-  claudeDesktopConfigPatch: { enabled: true, configPath: undefined },
+  claudeDesktopConfigPatch: { enabled: true, configLibraryPath: undefined },
   ui: { enabled: true, openOnStart: true },
 };
 
@@ -71,6 +72,65 @@ test("buildHealthSummary reports proxy, upstream, patch, and vision state", () =
   );
   assert.equal(health.score.ok, 4);
   assert.equal(health.items[1]?.detail, "discovered upstream");
+});
+
+test("buildContextUsage exposes current usage and all 200k protection thresholds", () => {
+  const config = structuredClone(baseConfig);
+  config.tokenPolicy.compactThreshold = 160_000;
+  config.tokenPolicy.hardLimit = 200_000;
+  config.tokenPolicy.safetyMargin = 8_000;
+  config.tokenPolicy.toolResultClearTrigger = 140_000;
+  config.tokenPolicy.toolResultClearTarget = 100_000;
+  config.claudeConfigPatch.autoCompactEnabled = true;
+  config.claudeConfigPatch.autoCompactReserveTokens = 30_000;
+
+  const context = buildContextUsage([{
+    timestamp: "2026-07-28T12:00:00.000Z",
+    level: "info",
+    message: "请求完成",
+    metadata: {
+      proxyInputTokens: 121_500,
+      upstreamInputTokens: 123_000,
+    },
+  }], config);
+
+  assert.equal(context.currentTokens, 123_000);
+  assert.equal(context.hardLimit, 200_000);
+  assert.equal(context.usagePercent, 61.5);
+  assert.equal(context.remainingTokens, 77_000);
+  assert.equal(context.toolClearTrigger, 140_000);
+  assert.equal(context.compactThreshold, 160_000);
+  assert.equal(context.nativeCompactThreshold, 170_000);
+  assert.equal(context.effectiveHardLimit, 192_000);
+  assert.equal(context.stage, "healthy");
+  assert.deepEqual(context.nextThreshold, {
+    label: "工具结果清理",
+    tokens: 140_000,
+    remainingTokens: 17_000,
+  });
+  assert.equal(context.source, "upstream");
+});
+
+test("buildContextUsage reports waiting state before the first request", () => {
+  const context = buildContextUsage([], baseConfig);
+  assert.equal(context.stage, "idle");
+  assert.equal(context.currentTokens, 0);
+  assert.equal(context.source, "waiting");
+  assert.equal(context.updatedAt, undefined);
+});
+
+test("buildContextUsage prefers the larger proxy estimate when provider usage omits cached input", () => {
+  const context = buildContextUsage([{
+    timestamp: "2026-07-28T12:00:00.000Z",
+    level: "info",
+    message: "请求完成",
+    metadata: {
+      proxyInputTokens: 88_000,
+      upstreamInputTokens: 12_000,
+    },
+  }], baseConfig);
+  assert.equal(context.currentTokens, 88_000);
+  assert.equal(context.source, "proxy");
 });
 
 test("extractProtectionEvents turns structured logs into user-facing guard events", () => {

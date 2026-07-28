@@ -153,6 +153,40 @@ test("ClaudeConfigPatcher adds native auto-compact and observer hooks without re
   assert.deepEqual(Object.keys(restored.hooks), ["Notification"]);
 });
 
+test("ClaudeConfigPatcher upgrades the legacy managed 130k auto-compact pair", () => {
+  const root = path.resolve("test-output", "cli-patcher-legacy-compact");
+  const settingsPath = path.join(root, "settings.json");
+  const runtimeDirectory = "./test-output/cli-patcher-legacy-compact/runtime";
+  rmSync(root, { recursive: true, force: true });
+  mkdirSync(path.resolve(runtimeDirectory, "sessions"), { recursive: true });
+  writeFileSync(settingsPath, `${JSON.stringify({
+    env: {
+      CLAUDE_CODE_AUTO_COMPACT_WINDOW: "130000",
+      CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: "76",
+    },
+  }, null, 2)}\n`, "utf8");
+
+  const config = buildConfig("", runtimeDirectory);
+  config.claudeConfigPatch = {
+    enabled: true,
+    settingsPath,
+    autoCompactEnabled: true,
+    autoCompactReserveTokens: 30_000,
+  };
+  config.claudeDesktopConfigPatch.enabled = false;
+  const patcher = new ClaudeConfigPatcher(config, new Logger(config.logging));
+
+  patcher.apply();
+  const patched = JSON.parse(readFileSync(settingsPath, "utf8")) as { env: Record<string, string> };
+  assert.equal(patched.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW, "200000");
+  assert.equal(patched.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE, "85");
+
+  patcher.restore();
+  const restored = JSON.parse(readFileSync(settingsPath, "utf8")) as { env: Record<string, string> };
+  assert.equal(restored.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW, undefined);
+  assert.equal(restored.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE, undefined);
+});
+
 test("ClaudeConfigPatcher refreshes a stale observer hook token after an unclean exit", () => {
   const root = path.resolve("test-output", "cli-patcher-stale-hook");
   const settingsPath = path.join(root, "settings.json");

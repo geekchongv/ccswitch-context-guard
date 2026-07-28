@@ -20,19 +20,19 @@
     "rateLimitMaxRetries": 1
   },
   "tokenPolicy": {
-    "compactThreshold": 90000,
-    "hardLimit": 130000,
+    "compactThreshold": 160000,
+    "hardLimit": 200000,
     "responseReserve": 12000,
     "chunkTarget": 90000,
     "safetyMargin": 8000,
-    "compactMode": "warn",
+    "compactMode": "proxy",
     "compactWarningText": "[上下文提醒] 当前会话已经接近上下文上限，建议你现在执行 /compact 后再继续。",
     "autoReduceMaxTokens": true,
     "retryOnContextError": true,
     "minOutputTokens": 1024,
     "toolResultClearingEnabled": true,
-    "toolResultClearTrigger": 80000,
-    "toolResultClearTarget": 65000,
+    "toolResultClearTrigger": 140000,
+    "toolResultClearTarget": 100000,
     "toolResultKeepRecent": 3
   },
   "vision": {

@@ -127,7 +127,80 @@ function renderProtectionEvents() {
   `).join("");
 }
 
+function formatTokens(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return "—";
+  if (numeric >= 1000) {
+    const digits = numeric >= 100000 ? 0 : 1;
+    return `${(numeric / 1000).toFixed(digits).replace(/\.0$/, "")}k`;
+  }
+  return numeric.toLocaleString("zh-CN");
+}
+
+function thresholdCopy(tokens, hardLimit) {
+  if (!Number.isFinite(tokens)) return "未启用";
+  const percent = hardLimit > 0 ? Math.round((tokens / hardLimit) * 100) : 0;
+  return `${formatTokens(tokens)} · ${percent}%`;
+}
+
+function renderContextUsage() {
+  const context = insights?.context;
+  if (!context) return;
+
+  const displayPercent = Math.max(0, Math.min(100, context.usagePercent));
+  const stageCopy = {
+    idle: "等待首个请求",
+    healthy: "容量健康",
+    cleanup: "即将清理工具结果",
+    compact: "已进入压缩区间",
+    critical: "接近上下文上限",
+  };
+  const sourceCopy = {
+    upstream: "上游实际用量",
+    proxy: "代理估算用量",
+    "tool-clear": "清理后估算",
+    waiting: "等待数据",
+  };
+
+  $("contextGauge").style.setProperty("--usage", `${displayPercent}%`);
+  $("contextGauge").setAttribute("aria-valuenow", String(Math.round(displayPercent)));
+  $("contextFill").style.width = `${displayPercent}%`;
+  $("contextPercent").textContent = `${context.usagePercent.toFixed(1).replace(/\.0$/, "")}%`;
+  $("contextGaugeCaption").textContent = `${formatTokens(context.currentTokens)} / ${formatTokens(context.hardLimit)}`;
+  $("contextCurrent").textContent = formatTokens(context.currentTokens);
+  $("contextRemaining").textContent = formatTokens(context.remainingTokens);
+  $("contextLimit").textContent = formatTokens(context.hardLimit);
+  $("contextStatus").textContent = stageCopy[context.stage] || "正在监测";
+  $("contextStatus").className = `context-status ${context.stage}`;
+  $("contextHeadline").textContent = context.stage === "idle"
+    ? `可用窗口 ${formatTokens(context.hardLimit)}`
+    : `已使用 ${formatTokens(context.currentTokens)}，剩余 ${formatTokens(context.remainingTokens)}`;
+  $("contextNext").textContent = context.nextThreshold
+    ? `距${context.nextThreshold.label}还有 ${formatTokens(context.nextThreshold.remainingTokens)} · ${sourceCopy[context.source]}`
+    : `已进入硬保护区间 · ${sourceCopy[context.source]}`;
+
+  const marker = (id, value) => {
+    const element = $(id);
+    if (!Number.isFinite(value)) {
+      element.style.display = "none";
+      return;
+    }
+    element.style.display = "";
+    element.style.left = `${Math.max(0, Math.min(100, (value / context.hardLimit) * 100))}%`;
+  };
+  marker("toolClearMarker", context.toolClearTrigger);
+  marker("proxyCompactMarker", context.compactThreshold);
+  marker("nativeCompactMarker", context.nativeCompactThreshold);
+  marker("hardLimitMarker", context.effectiveHardLimit);
+
+  $("toolClearThreshold").textContent = thresholdCopy(context.toolClearTrigger, context.hardLimit);
+  $("proxyCompactThreshold").textContent = thresholdCopy(context.compactThreshold, context.hardLimit);
+  $("nativeCompactThreshold").textContent = thresholdCopy(context.nativeCompactThreshold, context.hardLimit);
+  $("effectiveHardLimit").textContent = thresholdCopy(context.effectiveHardLimit, context.hardLimit);
+}
+
 function renderInsights() {
+  renderContextUsage();
   renderHealth();
   renderProtectionEvents();
 }

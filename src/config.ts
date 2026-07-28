@@ -23,20 +23,20 @@ const defaultConfig: AppConfig = {
     rateLimitMaxRetries: 1,
   },
   tokenPolicy: {
-    compactThreshold: 90000,
-    hardLimit: 130000,
+    compactThreshold: 160_000,
+    hardLimit: 200_000,
     responseReserve: 12000,
     chunkTarget: 90000,
     safetyMargin: 8000,
-    compactMode: "warn",
+    compactMode: "proxy",
     compactWarningText:
       "[上下文提醒] 当前会话已经接近上下文上限，建议你现在执行 /compact 后再继续。",
     autoReduceMaxTokens: true,
     retryOnContextError: true,
     minOutputTokens: 1024,
     toolResultClearingEnabled: true,
-    toolResultClearTrigger: 80_000,
-    toolResultClearTarget: 65_000,
+    toolResultClearTrigger: 140_000,
+    toolResultClearTarget: 100_000,
     toolResultKeepRecent: 3,
   },
   vision: {
@@ -99,6 +99,20 @@ export function mergeConfig(base: AppConfig, override: Partial<AppConfig>): AppC
   };
 }
 
+function migrateLegacyContextPolicy(config: AppConfig): boolean {
+  const policy = config.tokenPolicy;
+  if (policy.hardLimit !== 130_000 || policy.compactThreshold !== 90_000) {
+    return false;
+  }
+
+  policy.hardLimit = 200_000;
+  policy.compactThreshold = 160_000;
+  policy.compactMode = "proxy";
+  if (policy.toolResultClearTrigger === 80_000) policy.toolResultClearTrigger = 140_000;
+  if (policy.toolResultClearTarget === 65_000) policy.toolResultClearTarget = 100_000;
+  return true;
+}
+
 export function getConfigPath(): string {
   const baseDirectory = getBaseDirectory();
   return process.env.CCPROXY_CONFIG
@@ -116,6 +130,9 @@ export function loadConfig(): AppConfig {
     const raw = readFileSync(configPath, "utf8");
     const parsed = JSON.parse(raw) as Partial<AppConfig>;
     config = mergeConfig(defaultConfig, parsed);
+    if (migrateLegacyContextPolicy(config)) {
+      writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
+    }
   } else {
     mkdirSync(path.dirname(configPath), { recursive: true });
     writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, "utf8");

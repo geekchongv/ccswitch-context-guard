@@ -20,6 +20,28 @@ export interface HealthSummary {
   };
 }
 
+export type ContextUsageStage = "idle" | "healthy" | "cleanup" | "compact" | "critical";
+
+export interface ContextUsageSnapshot {
+  currentTokens: number;
+  hardLimit: number;
+  effectiveHardLimit: number;
+  remainingTokens: number;
+  usagePercent: number;
+  compactThreshold: number;
+  toolClearTrigger: number;
+  toolClearTarget: number;
+  nativeCompactThreshold?: number;
+  stage: ContextUsageStage;
+  nextThreshold?: {
+    label: string;
+    tokens: number;
+    remainingTokens: number;
+  };
+  source: "upstream" | "proxy" | "tool-clear" | "waiting";
+  updatedAt?: string;
+}
+
 export type ProtectionEventKind =
   | "budget"
   | "max_tokens"
@@ -70,6 +92,90 @@ function score(items: HealthItem[]): HealthSummary["score"] {
     ok: items.filter((item) => item.state === "ok").length,
     warn: items.filter((item) => item.state === "warn").length,
     off: items.filter((item) => item.state === "off").length,
+  };
+}
+
+function latestContextReading(entries: LogEntry[]): {
+  tokens: number;
+  source: ContextUsageSnapshot["source"];
+  updatedAt: string;
+} | undefined {
+  for (const entry of entries.slice().reverse()) {
+    const data = metadata(entry);
+    const upstreamInputTokens = numberValue(data.upstreamInputTokens);
+    const proxyInputTokens = numberValue(data.proxyInputTokens);
+    const afterInputTokens = numberValue(data.afterInputTokens);
+    const inputTokens = numberValue(data.inputTokens);
+
+    if (upstreamInputTokens !== undefined || proxyInputTokens !== undefined) {
+      const useUpstream = upstreamInputTokens !== undefined
+        && (proxyInputTokens === undefined || upstreamInputTokens >= proxyInputTokens);
+      return {
+        tokens: useUpstream ? upstreamInputTokens as number : proxyInputTokens as number,
+        source: useUpstream ? "upstream" : "proxy",
+        updatedAt: entry.timestamp,
+      };
+    }
+    if (entry.message.includes("Cleared old Agent tool results") && afterInputTokens !== undefined) {
+      return { tokens: afterInputTokens, source: "tool-clear", updatedAt: entry.timestamp };
+    }
+    if (entry.message === "Token预算评估" && inputTokens !== undefined) {
+      return { tokens: inputTokens, source: "proxy", updatedAt: entry.timestamp };
+    }
+  }
+  return undefined;
+}
+
+export function buildContextUsage(entries: LogEntry[], config: AppConfig): ContextUsageSnapshot {
+  const hardLimit = Math.max(1, config.tokenPolicy.hardLimit);
+  const safetyMargin = Math.max(0, config.tokenPolicy.safetyMargin);
+  const effectiveHardLimit = Math.max(1, hardLimit - safetyMargin);
+  const compactThreshold = Math.min(config.tokenPolicy.compactThreshold, effectiveHardLimit);
+  const toolClearTrigger = Math.min(
+    config.tokenPolicy.toolResultClearTrigger ?? compactThreshold,
+    effectiveHardLimit,
+  );
+  const toolClearTarget = Math.min(
+    config.tokenPolicy.toolResultClearTarget ?? Math.floor(toolClearTrigger * 0.7),
+    toolClearTrigger,
+  );
+  const reserve = Math.max(1, config.claudeConfigPatch.autoCompactReserveTokens ?? 30_000);
+  const nativeCompactThreshold = (config.claudeConfigPatch.autoCompactEnabled ?? true)
+    ? Math.max(1, hardLimit - reserve)
+    : undefined;
+  const reading = latestContextReading(entries);
+  const currentTokens = Math.max(0, reading?.tokens ?? 0);
+  const thresholds = [
+    { label: "工具结果清理", tokens: toolClearTrigger },
+    { label: "代理压缩", tokens: compactThreshold },
+    ...(nativeCompactThreshold === undefined ? [] : [{ label: "Claude 原生压缩", tokens: nativeCompactThreshold }]),
+    { label: "硬保护", tokens: effectiveHardLimit },
+  ].sort((a, b) => a.tokens - b.tokens);
+  const next = thresholds.find((threshold) => threshold.tokens > currentTokens);
+
+  let stage: ContextUsageStage = "healthy";
+  if (!reading) stage = "idle";
+  else if (currentTokens >= effectiveHardLimit) stage = "critical";
+  else if (currentTokens >= compactThreshold) stage = "compact";
+  else if (currentTokens >= toolClearTrigger) stage = "cleanup";
+
+  return {
+    currentTokens,
+    hardLimit,
+    effectiveHardLimit,
+    remainingTokens: Math.max(0, hardLimit - currentTokens),
+    usagePercent: Math.round((currentTokens / hardLimit) * 1000) / 10,
+    compactThreshold,
+    toolClearTrigger,
+    toolClearTarget,
+    nativeCompactThreshold,
+    stage,
+    nextThreshold: next ? {
+      ...next,
+      remainingTokens: Math.max(0, next.tokens - currentTokens),
+    } : undefined,
+    source: reading?.source ?? "waiting",
+    updatedAt: reading?.updatedAt,
   };
 }
 
