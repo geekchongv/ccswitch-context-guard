@@ -413,6 +413,7 @@ test("orchestrator does not hide a failed image behind a text-only retry", async
 
     assert.equal(response.status, 400);
     assert.match(JSON.stringify(payload), /CCProxy 图片识别失败/);
+    assert.match(JSON.stringify(payload), /多模态预处理尚未开启/);
     assert.equal(received.length, 1);
     assert.match(JSON.stringify(received[0]), /container_upload/);
   } finally {

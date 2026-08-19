@@ -283,6 +283,26 @@ test("getVisionInputDiagnostics reports unsupported image-like parts without lea
   assert.doesNotMatch(JSON.stringify(diagnostics), /file-secret-id/);
 });
 
+test("enrichRequestWithVision reports an actionable error for an oversized image", async () => {
+  const config = buildVisionConfig(1);
+  config.maxImageBytes = 2;
+  const request = {
+    messages: [{
+      role: "user" as const,
+      content: [{
+        type: "image" as const,
+        source: { type: "base64", media_type: "image/png", data: "aGVsbG8=" },
+      }],
+    }],
+  };
+
+  const result = await enrichRequestWithVision(request, config);
+
+  assert.equal(result.vision.used, false);
+  assert.equal(result.vision.imageCount, 1);
+  assert.match(result.vision.error ?? "", /图片大小超过限制/);
+});
+
 test("enrichRequestWithVision handles top-level Desktop attachments and strips them for text downstreams", async () => {
   const seenImageUrls: string[] = [];
   const upstream = http.createServer(async (request, response) => {

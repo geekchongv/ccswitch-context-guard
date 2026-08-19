@@ -333,18 +333,49 @@ export class Orchestrator {
       const encodedFileId = encodeURIComponent(fileId);
       const prefixedPath = routePath.replace(/\/v1\/messages$/i, `/v1/files/${encodedFileId}/content`);
       const candidatePaths = [...new Set([prefixedPath, `/v1/files/${encodedFileId}/content`])];
-      for (const filePath of candidatePaths) {
+      for (const [attempt, filePath] of candidatePaths.entries()) {
         const fileResponse = await this.upstreamClient.forward(filePath, {
           method: "GET",
           headers: upstreamHeaders,
         });
-        if (!fileResponse.ok) continue;
+        if (!fileResponse.ok) {
+          this.logger.warn("Claude Desktop 图片附件下载失败", {
+            requestId,
+            attempt: attempt + 1,
+            status: fileResponse.status,
+          });
+          continue;
+        }
         const declaredLength = Number(fileResponse.headers.get("content-length") ?? 0);
-        if (declaredLength > this.config.vision.maxImageBytes) continue;
+        if (declaredLength > this.config.vision.maxImageBytes) {
+          this.logger.warn("Claude Desktop 图片附件超过大小限制", {
+            requestId,
+            attempt: attempt + 1,
+            declaredLength,
+            maxImageBytes: this.config.vision.maxImageBytes,
+          });
+          continue;
+        }
         const bytes = new Uint8Array(await fileResponse.arrayBuffer());
-        if (bytes.byteLength === 0 || bytes.byteLength > this.config.vision.maxImageBytes) continue;
+        if (bytes.byteLength === 0 || bytes.byteLength > this.config.vision.maxImageBytes) {
+          this.logger.warn("Claude Desktop 图片附件内容为空或超过大小限制", {
+            requestId,
+            attempt: attempt + 1,
+            byteLength: bytes.byteLength,
+            maxImageBytes: this.config.vision.maxImageBytes,
+          });
+          continue;
+        }
         const mediaType = detectImageMediaType(bytes, fileResponse.headers.get("content-type"));
-        if (!mediaType) continue;
+        if (!mediaType) {
+          this.logger.warn("Claude Desktop 附件不是支持的图片格式", {
+            requestId,
+            attempt: attempt + 1,
+            contentType: fileResponse.headers.get("content-type") ?? "unknown",
+            byteLength: bytes.byteLength,
+          });
+          continue;
+        }
         return {
           url: `data:${mediaType};base64,${Buffer.from(bytes).toString("base64")}`,
           mediaType,
@@ -821,9 +852,14 @@ export class Orchestrator {
     if (!response.ok) {
       const { replayResponse, bodyPreview } = await captureUpstreamError(response);
       if (isNonMultimodalModelError(replayResponse.status, bodyPreview)) {
-        const failureMessage = withVision.vision.error
-          ? `CCProxy 图片识别失败：${withVision.vision.error}`
-          : "CCProxy 图片识别失败：无法从 Claude Desktop 的附件引用中读取图片，请查看代理日志。";
+        const diagnostics = getVisionInputDiagnostics(workingRequest);
+        const failureMessage = !this.config.vision.enabled
+          ? "CCProxy 图片识别失败：多模态预处理尚未开启。请在 CCProxy Agent 的“多模态”页面配置视觉模型与 API Key、开启多模态并保存，然后重新发送图片。"
+          : withVision.vision.error
+            ? `CCProxy 图片识别失败：${withVision.vision.error}`
+            : diagnostics.fileReferenceCount > 0
+              ? "CCProxy 图片识别失败：无法从 Claude Desktop 的附件引用中下载图片，请在代理日志中查看文件接口的响应状态。"
+              : "CCProxy 图片识别失败：已检测到图片，但未得到可供视觉模型处理的图片数据；请检查图片格式和单图大小限制。";
         response = new Response(JSON.stringify({
           type: "error",
           error: {
@@ -840,7 +876,7 @@ export class Orchestrator {
           status: replayResponse.status,
           visionUsed: withVision.vision.used,
           visionError: withVision.vision.error,
-          diagnostics: getVisionInputDiagnostics(workingRequest),
+          diagnostics,
         });
       } else {
         response = replayResponse;

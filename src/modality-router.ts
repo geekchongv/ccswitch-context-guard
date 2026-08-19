@@ -648,9 +648,19 @@ export async function enrichRequestWithVision(
   }
   const images = limitImages([...extraction.images, ...resolvedImages], visionConfig);
   if (images.length === 0) {
+    const discoveredImages = [...extraction.images, ...resolvedImages];
+    const oversizedImages = discoveredImages.filter(
+      (image) => image.bytes !== undefined && image.bytes > visionConfig.maxImageBytes,
+    );
     return {
       request,
-      vision: { used: false },
+      vision: {
+        used: false,
+        imageCount: discoveredImages.length || undefined,
+        error: oversizedImages.length > 0
+          ? `图片大小超过限制（最多 ${visionConfig.maxImageBytes} 字节），请压缩图片或在多模态设置中提高单图上限。`
+          : undefined,
+      },
     };
   }
 
