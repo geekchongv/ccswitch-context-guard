@@ -1,3 +1,5 @@
+
+
 <div align="center">
 
 # 🛡️ CCProxy Agent
@@ -118,6 +120,8 @@ cd ccswitch-context-guard
 npm install
 npm run dev
 ```
+
+For the desktop UI from source, use `npm run dev:gui` instead of `npm run dev`.
 
 The first source startup also creates `config.json` when it is missing. The proxy starts on `http://127.0.0.1:15722` and the local dashboard remains available at that URL.
 
